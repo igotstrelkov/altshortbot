@@ -4,13 +4,14 @@ Always call create_asset_state() — never construct state dicts manually.
 See PRD Section 2.7.
 """
 from collections import deque
-# Imports below are filled in once the concrete classes exist
-# from strategy.trigger.vwap_buffer import VwapBuffer
-# from strategy.trigger.delta_aggregator import DeltaAggregator
-# from strategy.liq_model import LiquidationModel
+from typing import Any
+
+from strategy.liq_model import LiquidationModel
+from strategy.trigger.delta_aggregator import DeltaAggregator
+from strategy.trigger.vwap_buffer import VwapBuffer
 
 
-def create_asset_state() -> dict[str, object]:
+def create_asset_state() -> dict[str, Any]:
     return {
         # ── Time series (all floats, never raw API strings) ──────────
         "funding_series":         deque(maxlen=48),    # per-hour rate (8h ÷ 8), 48h rolling
@@ -33,13 +34,10 @@ def create_asset_state() -> dict[str, object]:
         "bid_depth_now":          0.0,
         "bid_depth_t_minus_30s":  0.0,
 
-        # ── Helper objects — always initialised, never None ───────────
-        # "liq_model":            LiquidationModel(),
-        # "delta_aggregator":     DeltaAggregator(),
-        # "vwap_buffer":          VwapBuffer(),
-        "liq_model":              None,   # replaced once classes are imported
-        "delta_aggregator":       None,
-        "vwap_buffer":            None,
+        # ── Helper objects ────────────────────────────────────────────
+        "liq_model":              LiquidationModel(),
+        "delta_aggregator":       DeltaAggregator(),
+        "vwap_buffer":            VwapBuffer(),
 
         # ── Computed ──────────────────────────────────────────────────
         "squeeze_score":          0,

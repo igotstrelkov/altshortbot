@@ -126,7 +126,7 @@ class TestGetDeltaZScore:
         import statistics
         expected_mean = statistics.mean(values)
         expected_std = statistics.stdev(values)
-        last = float(state["trade_delta_60s"])  # type: ignore[arg-type]
+        last = float(state["trade_delta_60s"])
         expected_z = (last - expected_mean) / expected_std
         assert get_delta_z_score(state) == pytest.approx(expected_z)
 

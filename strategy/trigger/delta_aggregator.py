@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import statistics
 import time
+from typing import Any
 
 from shared.constants import DELTA_COLD_START_PERIODS, DELTA_WINDOW_S
 
@@ -30,7 +31,7 @@ class DeltaAggregator:
         elif side == "B":
             self.buy_vol_usd += usd
 
-    def flush_if_ready(self, state: dict[str, object], now: float) -> bool:
+    def flush_if_ready(self, state: dict[str, Any], now: float) -> bool:
         """Call after every trade tick. Returns True when a window is flushed."""
         if now - self.window_start >= self.WINDOW_S:
             update_delta_state(state, self.sell_vol_usd - self.buy_vol_usd)
@@ -41,14 +42,11 @@ class DeltaAggregator:
         return False
 
 
-def update_delta_state(state: dict[str, object], new_delta_60s: float) -> None:
+def update_delta_state(state: dict[str, Any], new_delta_60s: float) -> None:
     """Called by DeltaAggregator.flush_if_ready() every 60 seconds."""
-    from collections import deque
-
     state["trade_delta_60s"] = new_delta_60s
+    state["delta_history"].append(new_delta_60s)
     delta_history = state["delta_history"]
-    assert isinstance(delta_history, deque)
-    delta_history.append(new_delta_60s)
 
     if len(delta_history) >= DELTA_COLD_START_PERIODS:
         state["delta_ready"] = True
@@ -61,17 +59,13 @@ def update_delta_state(state: dict[str, object], new_delta_60s: float) -> None:
         state["delta_std_10m"] = 0.0
 
 
-def get_delta_z_score(state: dict[str, object]) -> float:
+def get_delta_z_score(state: dict[str, Any]) -> float:
     """
     Returns 0.0 if delta_ready is False or std is zero.
     Primary trigger fires when this returns < DELTA_ZSCORE_TRIGGER (-2.0).
     """
     if not state["delta_ready"] or state["delta_std_10m"] == 0:
         return 0.0
-    delta = state["trade_delta_60s"]
-    mean = state["delta_mean_10m"]
-    std = state["delta_std_10m"]
-    assert isinstance(delta, float)
-    assert isinstance(mean, float)
-    assert isinstance(std, float)
-    return (delta - mean) / std
+    return float(
+        (state["trade_delta_60s"] - state["delta_mean_10m"]) / state["delta_std_10m"]
+    )

@@ -513,14 +513,14 @@ def ema(closes: list, period: int) -> list:
 ```python
 def compute_vwap(trades: list) -> float:
     """
-    trades: list of (price: float, volume_usd: float) tuples.
+    trades: list of (price: float, size_base: float) tuples.
     Returns 0.0 if empty.
     Used by: VwapBuffer.get_vwap(), trigger confirmation (Section 7).
     """
-    total_vol = sum(v for _, v in trades)
-    if total_vol == 0:
+    total_size = sum(sz for _, sz in trades)
+    if total_size == 0:
         return 0.0
-    return sum(p * v for p, v in trades) / total_vol
+    return sum(p * sz for p, sz in trades) / total_size
 ```
 
 ### 3.3 ATR
@@ -629,17 +629,17 @@ class VwapBuffer:
     WINDOW_S = 300    # VWAP_BUFFER_WINDOW_S
 
     def __init__(self):
-        self._trades: list = []    # (timestamp, price, volume_usd)
+        self._trades: list = []    # (timestamp, price, size_base)
 
     def on_trade(self, price: float, size_base: float, now: float) -> None:
-        self._trades.append((now, price, size_base * price))
+        self._trades.append((now, price, size_base))
         cutoff = now - self.WINDOW_S
-        self._trades = [(t, p, v) for t, p, v in self._trades if t >= cutoff]
+        self._trades = [(t, p, sz) for t, p, sz in self._trades if t >= cutoff]
 
     def get_vwap(self) -> float:
         if not self._trades:
             return 0.0
-        return compute_vwap([(p, v) for _, p, v in self._trades])
+        return compute_vwap([(p, sz) for _, p, sz in self._trades])
 ```
 
 ### 3.6 DeltaAggregator
