@@ -1,0 +1,65 @@
+"""
+Single source of truth for per-asset state initialisation.
+Always call create_asset_state() — never construct state dicts manually.
+See PRD Section 2.7.
+"""
+from collections import deque
+# Imports below are filled in once the concrete classes exist
+# from strategy.trigger.vwap_buffer import VwapBuffer
+# from strategy.trigger.delta_aggregator import DeltaAggregator
+# from strategy.liq_model import LiquidationModel
+
+
+def create_asset_state() -> dict[str, object]:
+    return {
+        # ── Time series (all floats, never raw API strings) ──────────
+        "funding_series":         deque(maxlen=48),    # per-hour rate (8h ÷ 8), 48h rolling
+        "oi_series":              deque(maxlen=245),    # 1-min OI, 4h + 5-sample smoothing buffer
+        "price_series":           deque(maxlen=245),    # 1-min sampled mark price (markPx)
+        "premium_series":         deque(maxlen=12),     # 5-min oracle premium (markPx-oraclePx)/oraclePx
+
+        # ── 5m candle series (from candle WS subscription) ───────────
+        "high_series_5m":         deque(maxlen=24),     # 2h of 5m highs
+        "low_series_5m":          deque(maxlen=24),     # 2h of 5m lows — needed for ATR
+        "close_series_5m":        deque(maxlen=24),     # 2h of 5m closes
+
+        # ── Trigger state ─────────────────────────────────────────────
+        "delta_history":          deque(maxlen=10),     # last 10 × 60s delta values
+        "trade_delta_60s":        0.0,
+        "delta_mean_10m":         0.0,
+        "delta_std_10m":          0.0,
+
+        # ── Order book ────────────────────────────────────────────────
+        "bid_depth_now":          0.0,
+        "bid_depth_t_minus_30s":  0.0,
+
+        # ── Helper objects — always initialised, never None ───────────
+        # "liq_model":            LiquidationModel(),
+        # "delta_aggregator":     DeltaAggregator(),
+        # "vwap_buffer":          VwapBuffer(),
+        "liq_model":              None,   # replaced once classes are imported
+        "delta_aggregator":       None,
+        "vwap_buffer":            None,
+
+        # ── Computed ──────────────────────────────────────────────────
+        "squeeze_score":          0,
+
+        # ── Throttle timestamps ───────────────────────────────────────
+        "last_oi_append_ts":      0.0,
+        "last_premium_append_ts": 0.0,
+
+        # ── Liveness and control ──────────────────────────────────────
+        "last_ws_ts":             0.0,
+        "last_reconcile_ts":      0.0,
+        "has_data_gap":           False,
+        "ws_subscribed_at":       0.0,    # unix ts when WS feeds were subscribed
+        "trigger_valid_until":    0.0,
+        "position_state":         None,   # None | 'open' | 'closing'
+        "pending_action_count":   0,
+
+        # ── Watch list membership ─────────────────────────────────────
+        # Ownership rule: main loop sets True on promote, False on demotion.
+        # Use the caller's external list as source of truth, not this flag.
+        "is_on_watchlist":        False,
+        "delta_ready":            False,
+    }
