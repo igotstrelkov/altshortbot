@@ -36,11 +36,15 @@ Only `shared/` exists. Everything else is greenfield:
 | Package | Status |
 |---|---|
 | `shared/constants.py`, `types.py`, `state_factory.py` | ✅ Complete |
-| `shared/helpers.py` | ❌ Not yet created |
-| `market_data/`, `strategy/`, `oms/`, `risk/` | ❌ Not yet created |
-| `scripts/`, `tests/` | ❌ Not yet created |
+| `shared/helpers.py` | ✅ Complete |
+| `strategy/trigger/vwap_buffer.py`, `delta_aggregator.py` | ✅ Complete |
+| `market_data/`, remaining `strategy/`, `oms/`, `risk/` | ❌ Not yet created |
+| `scripts/` | ❌ Not yet created |
+| `tests/unit/` | ✅ Exists (test_helpers.py, test_vwap_delta.py) |
 
-The three helper classes referenced in `state_factory.py` (`VwapBuffer`, `DeltaAggregator`, `LiquidationModel`) are stubbed as `None`. Replace them once the respective modules are implemented.
+`VwapBuffer` and `DeltaAggregator` in `state_factory.py` are still stubbed as `None`. `LiquidationModel` also remains `None`. Replace all three once Stage 3 is complete.
+
+**PRD discrepancy — VwapBuffer:** The PRD (Section 3.5) says `on_trade` should store `size_base * price` as volume. The correct implementation stores `size_base` (base quantity), which is standard VWAP weighting and matches the Stage 2 validation script. Do not change this back.
 
 The authoritative specification is `AltShortBot_PRD_v3.md`. Section 15 is the LLM implementation guide.
 
