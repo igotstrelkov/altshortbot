@@ -377,7 +377,7 @@ python -c "
 from collections import deque
 from strategy.scanner.gate1 import gate1_passes
 # Create a valid 8-reading funding series: 6 positive, annualised > 50%
-fs = deque([0.00006]*6 + [-0.00001]*2, maxlen=48)  # 6 pos, last = 0.00006 * 8760 = 0.5256 APR
+fs = deque([-0.00001]*2 + [0.00006]*6, maxlen=48)  # 6 pos, last = 0.00006 * 8760 = 0.5256 APR (negatives must be older/first)
 ps = deque([0.0003], maxlen=12)
 assert gate1_passes(fs, ps) == True
 print('gate1 OK')
