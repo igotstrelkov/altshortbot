@@ -39,9 +39,11 @@ Only `shared/` exists. Everything else is greenfield:
 | `shared/helpers.py` | ✅ Complete |
 | `strategy/trigger/vwap_buffer.py`, `delta_aggregator.py` | ✅ Complete |
 | `strategy/liq_model.py` | ✅ Complete |
-| `market_data/`, remaining `strategy/`, `oms/`, `risk/` | ❌ Not yet created |
+| `market_data/universe_snapshotter.py` | ✅ Complete |
+| `shared/logging_config.py` | ✅ Complete |
+| remaining `market_data/`, `strategy/`, `oms/`, `risk/` | ❌ Not yet created |
 | `scripts/` | ❌ Not yet created |
-| `tests/unit/` | ✅ Exists (test_helpers.py, test_vwap_delta.py, test_liq_model.py) |
+| `tests/unit/` | ✅ Exists (test_helpers.py, test_vwap_delta.py, test_liq_model.py, test_ingestion.py) |
 
 All three helper objects (`VwapBuffer`, `DeltaAggregator`, `LiquidationModel`) are now wired into `state_factory.py` as real instances.
 The authoritative specification is `AltShortBot_PRD_v3.md`. Section 15 is the LLM implementation guide.
