@@ -46,9 +46,10 @@ Only `shared/` exists. Everything else is greenfield:
 | `strategy/trigger/trigger_engine.py` | ✅ Complete |
 | `market_data/tiered_streamer.py` | ✅ Complete |
 | `market_data/state_normaliser.py` | ✅ Complete |
-| remaining `oms/`, `risk/` | ❌ Not yet created |
+| `oms/price_formatter.py`, `order_parser.py`, `ioc_entry.py`, `execution_adapter.py` | ✅ Complete |
+| remaining `risk/` | ❌ Not yet created |
 | `scripts/` | ❌ Not yet created |
-| `tests/unit/` | ✅ Exists (test_helpers.py, test_vwap_delta.py, test_liq_model.py, test_ingestion.py, test_gates.py, test_regime.py, test_trigger.py) |
+| `tests/unit/` | ✅ Exists (test_helpers.py, test_vwap_delta.py, test_liq_model.py, test_ingestion.py, test_gates.py, test_regime.py, test_trigger.py, test_execution.py) |
 
 All three helper objects (`VwapBuffer`, `DeltaAggregator`, `LiquidationModel`) are now wired into `state_factory.py` as real instances.
 The authoritative specification is `AltShortBot_PRD_v3.md`. Section 15 is the LLM implementation guide.

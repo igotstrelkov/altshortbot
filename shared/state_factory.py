@@ -46,6 +46,9 @@ def create_asset_state() -> dict[str, Any]:
         "last_oi_append_ts":      0.0,
         "last_premium_append_ts": 0.0,
 
+        # ── Exchange metadata ─────────────────────────────────────────
+        "sz_decimals":            0,         # from metaAndAssetCtxs; set at universe scan
+
         # ── Liveness and control ──────────────────────────────────────
         "last_ws_ts":             0.0,
         "last_reconcile_ts":      0.0,
