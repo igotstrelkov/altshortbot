@@ -49,6 +49,7 @@ Only `shared/` exists. Everything else is greenfield:
 | `oms/price_formatter.py`, `order_parser.py`, `ioc_entry.py`, `execution_adapter.py` | ✅ Complete |
 | `risk/daily_loss_tracker.py`, `correlation_filter.py`, `watchdog.py`, `portfolio_controller.py` | ✅ Complete |
 | `oms/nonce_manager.py`, `execution_adapter.py` (ExchangeAdapter + stub) | ✅ Complete |
+| `market_data/ws_manager.py` | ✅ Complete |
 | `scripts/` | ❌ Not yet created |
 | `tests/unit/` | ✅ Exists (test_helpers.py, test_vwap_delta.py, test_liq_model.py, test_ingestion.py, test_gates.py, test_regime.py, test_trigger.py, test_execution.py) |
 

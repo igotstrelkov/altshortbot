@@ -805,7 +805,7 @@ Write integration test stub in `tests/integration/test_exchange_adapter.py`:
 
 Note on signing: The EIP-712 signature is the hardest exchange-specific piece.
 Options in order of effort:
-  1. Use the official hyperliquid-python-sdk (pip install hyperliquid-python)
+  1. Use the official hyperliquid-python-sdk (pip install hyperliquid-python-sdk)
   2. Implement EIP-712 directly using eth_account library
   3. Use a reference implementation from Hyperliquid's GitHub examples
 Whichever you choose, wire it in before live/paper trading (Stage 12).
@@ -907,7 +907,7 @@ Reference: PRD Sections 2.6, 2.8, 2.9.
 Part A — EIP-712 Signing
 
 Wire in signing to `oms/execution_adapter.py`.
-Use: pip install hyperliquid-python (official SDK) or eth_account + manual EIP-712.
+Use: pip install hyperliquid-python-sdk (official SDK) or eth_account + manual EIP-712.
 
 The Hyperliquid exchange action must be signed with the wallet's private key.
 Replace the NotImplementedError placeholder in place_limit_order with a real signature.

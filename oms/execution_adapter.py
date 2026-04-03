@@ -127,7 +127,7 @@ class ExchangeAdapter:
         # ── EIP-712 signing ───────────────────────────────────────────────────
         # Out of scope for Stage 10.
         # Options (in order of effort):
-        #   1. pip install hyperliquid-python  — official SDK handles signing
+        #   1. pip install hyperliquid-python-sdk  — official SDK handles signing
         #   2. eth_account library — implement EIP-712 directly
         #   3. Reference: https://github.com/hyperliquid-dex/hyperliquid-python-sdk
         raise NotImplementedError(
