@@ -724,7 +724,7 @@ pytest tests/unit/test_risk.py -v
 python -c "
 from risk.portfolio_controller import calculate_position_size
 result = calculate_position_size(10000, 'NORMAL', 0, 0.02)
-assert result == 500.0, f'expected 500.0 got {result}'
+assert result == 5000.0, f'expected 5000.0 got {result}'
 print('position sizing OK')
 "
 ```

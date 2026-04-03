@@ -11,7 +11,6 @@ from typing import Any
 
 import structlog
 
-from oms.ioc_entry import place_ioc_aggressive
 from shared.constants import (
     HEARTBEAT_BEAT_INTERVAL_S,
     HEARTBEAT_TIMEOUT_S,
@@ -71,6 +70,8 @@ async def emergency_flatten_all(exchange: Any) -> None:
     Called from watchdog thread via asyncio.run() — runs in a fresh event loop.
     Do not reuse the main-loop exchange client; construct a fresh REST client if needed.
     """
+    from oms.ioc_entry import place_ioc_aggressive  # local import breaks circular dep
+
     positions: list[dict[str, Any]] = await exchange.get_open_positions()
     for pos in positions:
         coin = pos["coin"]
