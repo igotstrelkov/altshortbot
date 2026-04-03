@@ -64,6 +64,26 @@ async def ws_connection_manager(
                         await ws.send(json.dumps({"method": "ping"}))
                         log.debug("ws_ping_sent", coin=coin)
 
+                    # Drain pending subscription commands from the main loop
+                    queue: asyncio.Queue[tuple[str, str]] | None = state.get(
+                        "ws_command_queue"
+                    )
+                    if queue is not None:
+                        while not queue.empty():
+                            cmd, feed = queue.get_nowait()
+                            if cmd == "subscribe":
+                                await ws.send(json.dumps({
+                                    "method": "subscribe",
+                                    "subscription": {"type": feed, "coin": coin},
+                                }))
+                                log.info("ws_subscribed", coin=coin, feed=feed)
+                            elif cmd == "unsubscribe":
+                                await ws.send(json.dumps({
+                                    "method": "unsubscribe",
+                                    "subscription": {"type": feed, "coin": coin},
+                                }))
+                                log.info("ws_unsubscribed", coin=coin, feed=feed)
+
         except (websockets.exceptions.ConnectionClosed, OSError) as exc:
             log.warning(
                 "ws_disconnected",

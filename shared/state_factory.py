@@ -47,7 +47,8 @@ def create_asset_state() -> dict[str, Any]:
         "last_premium_append_ts": 0.0,
 
         # ── Exchange metadata ─────────────────────────────────────────
-        "sz_decimals":            0,         # from metaAndAssetCtxs; set at universe scan
+        "sz_decimals":            0,         # populated at startup from exchange.coin_meta
+        "ws_command_queue":       None,      # set to asyncio.Queue() in main before WS tasks
 
         # ── Liveness and control ──────────────────────────────────────
         "last_ws_ts":             0.0,

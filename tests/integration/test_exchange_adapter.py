@@ -32,7 +32,7 @@ async def test_place_limit_order_response_shape(adapter: ExchangeAdapter) -> Non
       response.data.statuses[0] containing 'filled' | 'resting' | 'error'
     Uses a tiny IOC order on a liquid testnet market.
     """
-    adapter.set_coin_meta("ETH", asset_index=1, sz_decimals=4)
+    adapter.coin_meta["ETH"] = {"asset_index": 1, "sz_decimals": 4}
     raw = await adapter.place_limit_order(
         coin="ETH",
         side="sell",

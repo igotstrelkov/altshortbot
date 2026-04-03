@@ -1,9 +1,9 @@
 """
-Exchange adapter: builds and signs Hyperliquid order actions.
+Exchange adapter: builds, signs, and submits Hyperliquid order actions.
 See PRD Sections 2.9, 2.10, 2.11.
 
-The module-level place_limit_order stub is kept as the injection point used by
-ioc_entry.py — patch it in unit tests or replace it with ExchangeAdapter in production.
+HTTP is handled via aiohttp (non-blocking).
+EIP-712 signing uses hyperliquid-python-sdk utilities + eth_account.
 """
 from __future__ import annotations
 
@@ -11,17 +11,21 @@ from typing import Any
 
 import aiohttp
 import structlog
+from eth_account import Account
+from eth_account.signers.local import LocalAccount
+from hyperliquid.utils.constants import MAINNET_API_URL  # type: ignore[import-untyped]
+from hyperliquid.utils.signing import get_timestamp_ms, sign_l1_action  # type: ignore[import-untyped]
 
+from market_data.universe_snapshotter import rest_post
 from oms.nonce_manager import NonceManager
 from risk.watchdog import HeartbeatMonitor
 
 log = structlog.get_logger()
 
-_HL_MAINNET = "https://api.hyperliquid.xyz"
 _HL_TESTNET = "https://api.hyperliquid-testnet.xyz"
 
 
-# ── Module-level stub (injection point for ioc_entry.py) ─────────────────────
+# ── Module-level stub (injection point patched by unit tests) ─────────────────
 
 async def place_limit_order(
     coin: str,
@@ -30,13 +34,9 @@ async def place_limit_order(
     price_str: str,
     tif: str,
 ) -> dict[str, Any]:
-    """
-    Module-level stub. In production, replace by wiring ExchangeAdapter.place_limit_order
-    as the callable (e.g. monkey-patch this name, or pass the adapter to execute_entry).
-    Patched in unit tests via unittest.mock.patch.
-    """
+    """Stub — patched in unit tests. In production use ExchangeAdapter."""
     raise NotImplementedError(
-        "place_limit_order not wired — instantiate ExchangeAdapter and wire it in"
+        "place_limit_order not wired — instantiate ExchangeAdapter"
     )
 
 
@@ -44,14 +44,12 @@ async def place_limit_order(
 
 class ExchangeAdapter:
     """
-    Builds Hyperliquid exchange actions, manages nonce, and submits via aiohttp.
+    Async exchange adapter for Hyperliquid perp trading.
 
-    Coin metadata (asset index, sz_decimals) must be loaded via set_coin_meta()
-    before place_limit_order is called.
+    Signing: uses eth_account + hyperliquid.utils.signing.sign_l1_action.
+    HTTP:    uses aiohttp (non-blocking — does not freeze the event loop).
 
-    EIP-712 signing is out of scope for Stage 10. place_limit_order raises
-    NotImplementedError at the signing step — wire in hyperliquid-python-sdk or
-    implement EIP-712 directly before live/paper trading (Stage 12).
+    Call build_coin_meta() once at startup before any orders.
     """
 
     def __init__(
@@ -60,25 +58,69 @@ class ExchangeAdapter:
         private_key: str,
         testnet: bool = True,
     ) -> None:
-        self.wallet_address = wallet_address
-        self._private_key = private_key
-        self.base_url = _HL_TESTNET if testnet else _HL_MAINNET
+        self._wallet_address = wallet_address
+        self._wallet: LocalAccount = Account.from_key(private_key)
+        self.base_url = _HL_TESTNET if testnet else MAINNET_API_URL
+        self._is_mainnet = not testnet
         self.nonce_manager = NonceManager()
         self._heartbeat_monitor = HeartbeatMonitor()
-        # Populated by set_coin_meta() after universe scan
-        self._coin_meta: dict[str, dict[str, Any]] = {}
-        # Session created lazily on first use (must be inside async context)
+        self.coin_meta: dict[str, dict[str, Any]] = {}
         self._session: aiohttp.ClientSession | None = None
 
-    def set_coin_meta(self, coin: str, asset_index: int, sz_decimals: int) -> None:
-        """Register universe metadata for a coin. Call after metaAndAssetCtxs fetch."""
-        self._coin_meta[coin] = {"index": asset_index, "sz_decimals": sz_decimals}
+    # ── Startup ───────────────────────────────────────────────────────────────
+
+    async def build_coin_meta(self) -> None:
+        """
+        Fetch universe metadata and cache asset_index + sz_decimals per coin.
+        Must be called once at startup before any orders or subscriptions.
+        """
+        response = await rest_post("/info", {"type": "meta"})
+        self.coin_meta = {
+            asset["name"]: {
+                "asset_index": i,
+                "sz_decimals": asset["szDecimals"],
+            }
+            for i, asset in enumerate(response["universe"])
+        }
+        log.info("coin_meta_built", num_coins=len(self.coin_meta))
+
+    def get_sz_decimals(self, coin: str) -> int:
+        return int(self.coin_meta[coin]["sz_decimals"])
+
+    def get_asset_index(self, coin: str) -> int:
+        return int(self.coin_meta[coin]["asset_index"])
 
     @property
     def heartbeat_monitor(self) -> HeartbeatMonitor:
         return self._heartbeat_monitor
 
-    async def _session_post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    # ── Signing ───────────────────────────────────────────────────────────────
+
+    def _sign_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        """
+        Sign an exchange action with EIP-712 and return the full payload.
+        Uses get_timestamp_ms() as nonce (Hyperliquid convention).
+        """
+        nonce = get_timestamp_ms()
+        signature = sign_l1_action(
+            self._wallet,
+            action,
+            None,           # vault_address — None for regular accounts
+            nonce,
+            None,           # expires_after — None for no expiry
+            self._is_mainnet,
+        )
+        return {
+            "action": action,
+            "nonce": nonce,
+            "signature": signature,
+            "vaultAddress": None,
+            "expiresAfter": None,
+        }
+
+    # ── HTTP ──────────────────────────────────────────────────────────────────
+
+    async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         if self._session is None:
             self._session = aiohttp.ClientSession()
         url = self.base_url + path
@@ -89,6 +131,8 @@ class ExchangeAdapter:
             result: dict[str, Any] = await resp.json()
             return result
 
+    # ── Orders ────────────────────────────────────────────────────────────────
+
     async def place_limit_order(
         self,
         coin: str,
@@ -98,21 +142,17 @@ class ExchangeAdapter:
         tif: str = "Gtc",
     ) -> dict[str, Any]:
         """
-        Build and submit a Hyperliquid limit order action.
-        Raises NotImplementedError at EIP-712 signing — wire signing in Stage 12.
+        Build, sign, and submit a Hyperliquid limit order.
+        price_str must be pre-formatted via format_price().
         """
-        meta = self._coin_meta.get(coin)
-        if meta is None:
-            raise RuntimeError(f"No metadata for coin {coin!r} — call set_coin_meta() first")
+        asset_idx = self.get_asset_index(coin)
+        sz_decimals = self.get_sz_decimals(coin)
 
-        asset_index: int = meta["index"]
-        sz_decimals: int = meta["sz_decimals"]
-
-        action: dict[str, Any] = {  # noqa: F841 — used once signing is wired in Stage 12
+        action: dict[str, Any] = {
             "type": "order",
             "orders": [
                 {
-                    "a": asset_index,
+                    "a": asset_idx,
                     "b": side == "buy",
                     "p": price_str,
                     "s": str(round(size_coins, sz_decimals)),
@@ -122,40 +162,48 @@ class ExchangeAdapter:
             ],
             "grouping": "na",
         }
-        nonce = self.nonce_manager.next_nonce()  # noqa: F841 — used once signing is wired in Stage 12
+        payload = self._sign_action(action)
+        return await self._post("/exchange", payload)
 
-        # ── EIP-712 signing ───────────────────────────────────────────────────
-        # Out of scope for Stage 10.
-        # Options (in order of effort):
-        #   1. pip install hyperliquid-python-sdk  — official SDK handles signing
-        #   2. eth_account library — implement EIP-712 directly
-        #   3. Reference: https://github.com/hyperliquid-dex/hyperliquid-python-sdk
-        raise NotImplementedError(
-            "EIP-712 signing not yet implemented — "
-            "wire in hyperliquid-python-sdk or implement directly"
+    async def cancel_all_orders(self) -> None:
+        """Cancel all resting orders. Called on clean shutdown."""
+        open_orders: list[dict[str, Any]] = await rest_post(
+            "/info", {"type": "openOrders", "user": self._wallet_address}
         )
+        if not open_orders:
+            return
+        cancel_action: dict[str, Any] = {
+            "type": "cancel",
+            "cancels": [
+                {
+                    "a": self.get_asset_index(order["coin"]),
+                    "o": order["oid"],
+                }
+                for order in open_orders
+            ],
+        }
+        payload = self._sign_action(cancel_action)
+        await self._post("/exchange", payload)
+        log.info("cancel_all_orders_done", count=len(open_orders))
 
-        # Once signing is implemented, continue with:
-        # payload = {"action": action, "nonce": nonce, "signature": signature}
-        # return await self._session_post("/exchange", payload)
+    # ── Account state ─────────────────────────────────────────────────────────
+
+    async def get_user_state(self) -> dict[str, Any]:
+        result: dict[str, Any] = await rest_post(
+            "/info",
+            {"type": "clearinghouseState", "user": self._wallet_address},
+        )
+        return result
 
     async def get_open_positions(self) -> list[dict[str, Any]]:
-        """
-        Fetch open positions from clearinghouseState.
-        Returns assetPositions with szi != '0'.
-        """
-        data = await self._session_post(
-            "/info",
-            {"type": "clearinghouseState", "user": self.wallet_address},
-        )
-        positions: list[dict[str, Any]] = [
-            p for p in data.get("assetPositions", [])
-            if p.get("position", {}).get("szi", "0") != "0"
+        state = await self.get_user_state()
+        return [
+            p["position"]
+            for p in state.get("assetPositions", [])
+            if float(p["position"]["szi"]) != 0
         ]
-        return positions
 
     async def close(self) -> None:
-        """Close the aiohttp session."""
         if self._session is not None:
             await self._session.close()
             self._session = None

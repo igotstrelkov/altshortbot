@@ -1,12 +1,15 @@
 # AltShortBot — LLM Implementation Plan
+
 **Feed each stage in order. Complete and validate before proceeding to the next.**
 
 Each stage contains:
+
 - The exact prompt to send to the LLM
 - Files to create or modify
 - Validation criteria to confirm the stage is complete before moving on
 
 Assumptions:
+
 - The project scaffold in `altshortbot/` already exists (see project structure)
 - `shared/constants.py`, `shared/types.py`, `shared/state_factory.py` are already populated
 - The PRD (`AltShortBot_PRD_v3.md`) is available for reference
@@ -17,6 +20,7 @@ Assumptions:
 ## Stage 1 — Core Math Helpers
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 1: core math helpers.
 
@@ -60,10 +64,12 @@ After implementing, write unit tests in `tests/unit/test_helpers.py` covering:
 ```
 
 ### Files
+
 - `shared/helpers.py` — implement all four functions
 - `tests/unit/test_helpers.py` — unit tests
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_helpers.py -v
 # All tests must pass. No imports from outside stdlib.
@@ -75,6 +81,7 @@ python -c "from shared.helpers import format_price; assert format_price(12345.67
 ## Stage 2 — VwapBuffer and DeltaAggregator
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 2: VwapBuffer and DeltaAggregator.
 
@@ -119,11 +126,13 @@ Write unit tests in `tests/unit/test_vwap_delta.py`:
 ```
 
 ### Files
+
 - `strategy/trigger/vwap_buffer.py`
 - `strategy/trigger/delta_aggregator.py`
 - `tests/unit/test_vwap_delta.py`
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_vwap_delta.py -v
 python -c "
@@ -141,6 +150,7 @@ print('VwapBuffer OK')
 ## Stage 3 — Liquidation Model
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 3: LiquidationModel and squeeze risk scoring.
 
@@ -194,10 +204,12 @@ Write unit tests in `tests/unit/test_liq_model.py`:
 ```
 
 ### Files
+
 - `strategy/liq_model.py`
 - `shared/state_factory.py` — wire in the three class instances
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_liq_model.py -v
 python -c "
@@ -215,6 +227,7 @@ print('State factory wired OK')
 ## Stage 4 — Data Ingestion
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 4: data ingestion functions.
 
@@ -268,10 +281,12 @@ Write unit tests in `tests/unit/test_ingestion.py`:
 ```
 
 ### Files
+
 - `market_data/universe_snapshotter.py`
 - `shared/logging_config.py` — configure structlog with JSON output, level from env
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_ingestion.py -v
 python -c "
@@ -294,6 +309,7 @@ print('ingest_asset_ctx OK')
 ## Stage 5 — Three-Gate Scanner
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 5: the three-gate scanner.
 
@@ -363,6 +379,7 @@ Write unit tests in `tests/unit/test_gates.py`:
 ```
 
 ### Files
+
 - `strategy/scanner/gate1.py`
 - `strategy/scanner/gate2.py`
 - `strategy/scanner/gate3.py`
@@ -371,6 +388,7 @@ Write unit tests in `tests/unit/test_gates.py`:
 - `strategy/scanner/promote_watchlist.py`
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_gates.py -v
 python -c "
@@ -389,6 +407,7 @@ print('gate1 OK')
 ## Stage 6 — Regime Filter
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 6: regime filter.
 
@@ -428,9 +447,11 @@ Write unit tests in `tests/unit/test_regime.py`:
 ```
 
 ### Files
+
 - `strategy/regime_filter.py`
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_regime.py -v
 ```
@@ -440,6 +461,7 @@ pytest tests/unit/test_regime.py -v
 ## Stage 7 — Trigger Engine
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 7: trigger engine and message handler.
 
@@ -507,11 +529,13 @@ Write unit tests in `tests/unit/test_trigger.py`:
 ```
 
 ### Files
+
 - `strategy/trigger/trigger_engine.py`
 - `market_data/tiered_streamer.py`
 - `market_data/state_normaliser.py`
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_trigger.py -v
 python -c "
@@ -530,6 +554,7 @@ print('handle_message trades OK')
 ## Stage 8 — Price Formatter and IOC Execution
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 8: price formatter and IOC execution engine.
 
@@ -612,12 +637,14 @@ Write unit tests in `tests/unit/test_execution.py`:
 ```
 
 ### Files
+
 - `oms/price_formatter.py`
 - `oms/order_parser.py`
 - `oms/ioc_entry.py`
 - `tests/unit/test_execution.py`
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_execution.py -v
 python -c "
@@ -636,6 +663,7 @@ print('parse_order_status OK')
 ## Stage 9 — Risk Engine
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 9: risk engine.
 
@@ -712,6 +740,7 @@ Write unit tests in `tests/unit/test_risk.py`:
 ```
 
 ### Files
+
 - `risk/daily_loss_tracker.py`
 - `risk/correlation_filter.py`
 - `risk/watchdog.py`
@@ -719,6 +748,7 @@ Write unit tests in `tests/unit/test_risk.py`:
 - `tests/unit/test_risk.py`
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_risk.py -v
 python -c "
@@ -734,6 +764,7 @@ print('position sizing OK')
 ## Stage 10 — OMS Core (Nonce, Batching, Exchange Adapter)
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 10: Order Management Service core.
 
@@ -812,11 +843,13 @@ Whichever you choose, wire it in before live/paper trading (Stage 12).
 ```
 
 ### Files
+
 - `oms/nonce_manager.py`
 - `oms/execution_adapter.py`
 - `tests/integration/test_exchange_adapter.py`
 
 ### Validation
+
 ```bash
 pytest tests/unit/ -v  # all prior unit tests still pass
 python -c "
@@ -833,6 +866,7 @@ print('NonceManager OK')
 ## Stage 11 — WebSocket Connection Manager
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 11: WebSocket connection manager.
 
@@ -878,9 +912,11 @@ Write integration test stub in `tests/integration/test_ws_manager.py`:
 ```
 
 ### Files
+
 - `market_data/ws_manager.py`
 
 ### Validation
+
 ```bash
 pytest tests/unit/ -v   # all prior tests still pass
 python -c "
@@ -894,84 +930,462 @@ print('subscribe_watchlist_feeds is incremental-only OK')
 "
 ```
 
----
-
-## Stage 12 — Main Loop and EIP-712 Signing
+## Stage 12 — Main Loop and Exchange Signing
 
 ### Prompt
+
 ```
-You are implementing the AltShortBot trading system. Your task is Stage 12: main loop and exchange signing.
+You are implementing the AltShortBot trading system. Your task is Stage 12: main loop
+and exchange signing.
 
 Reference: PRD Sections 2.6, 2.8, 2.9.
 
-Part A — EIP-712 Signing
+─────────────────────────────────────────────────────────────────────
+DECISION 1: SIGNING — USE eth_account DIRECTLY, NOT THE SDK
+─────────────────────────────────────────────────────────────────────
 
-Wire in signing to `oms/execution_adapter.py`.
-Use: pip install hyperliquid-python-sdk (official SDK) or eth_account + manual EIP-712.
+The hyperliquid-python-sdk uses the blocking `requests` library internally.
+Calling Exchange.order() from async code freezes the event loop for the
+duration of the HTTP round-trip, blocking all WS message processing and
+the ping loop. Do not use Exchange.order() or Info() directly in async code.
 
-The Hyperliquid exchange action must be signed with the wallet's private key.
-Replace the NotImplementedError placeholder in place_limit_order with a real signature.
+Instead:
+  pip install hyperliquid-python-sdk eth_account
 
-Signing must:
-  - Use the wallet's private key from config
-  - Produce a valid EIP-712 signature accepted by the exchange
-  - Set the nonce to prevent replay
+Use the SDK only for EIP-712 signing utilities, not for HTTP calls.
+Keep the existing aiohttp-based place_limit_order from Stage 10 for HTTP.
+Add signing to it like this:
 
-Test signing works in testnet BEFORE enabling mainnet.
+  from eth_account import Account
+  from hyperliquid.utils.signing import sign_l1_action, get_timestamp_ms
+  # (exact import path — check SDK source if this differs)
 
-Part B — Main Loop
+  def _sign_action(self, action: dict) -> dict:
+      account   = Account.from_key(self._private_key)
+      nonce     = self.nonce_manager.next_nonce()
+      signature = sign_l1_action(account, action, nonce)
+      return {
+          "action":    action,
+          "nonce":     nonce,
+          "signature": signature,
+      }
+
+  async def place_limit_order(self, coin, side, size_coins, price_str, tif='Gtc') -> dict:
+      asset_idx   = self.get_asset_index(coin)
+      sz_decimals = self.get_sz_decimals(coin)
+      action = {
+          "type": "order",
+          "orders": [{
+              "a": asset_idx,
+              "b": side == 'buy',
+              "p": price_str,
+              "s": str(round(size_coins, sz_decimals)),
+              "r": False,
+              "t": {"limit": {"tif": tif}},
+          }],
+          "grouping": "na",
+      }
+      payload  = self._sign_action(action)
+      response = await self._post("/exchange", payload)
+      return response
+
+  async def _post(self, path: str, payload: dict) -> dict:
+      async with aiohttp.ClientSession() as session:
+          async with session.post(self.base_url + path, json=payload) as r:
+              return await r.json()
+
+For Info calls (metaAndAssetCtxs, user_state, fundingHistory etc.) keep the
+existing rest_post from universe_snapshotter.py — those are already async.
+
+IMPORTANT: Verify sign_l1_action import path against the installed SDK version.
+Check: python -c "import hyperliquid; print(hyperliquid.__file__)"
+then inspect the signing module. The signing logic itself is correct; only the
+import path may differ.
+
+─────────────────────────────────────────────────────────────────────
+DECISION 2: WS SUBSCRIPTIONS FROM THE MAIN LOOP
+─────────────────────────────────────────────────────────────────────
+
+ws_connection_manager owns the ws object inside async with websockets.connect().
+The main loop runs in a separate task and cannot access ws directly.
+
+Use a per-coin asyncio.Queue to pass subscription commands from the main loop
+to the WS task:
+
+  # In create_asset_state() — add to state factory:
+  "ws_command_queue": None,  # set to asyncio.Queue() at startup
+
+  # In main.py startup, before launching WS tasks:
+  for coin in universe_coins:
+      all_states[coin]["ws_command_queue"] = asyncio.Queue()
+
+  # In ws_connection_manager — drain the queue on each message loop iteration:
+  while True:
+      try:
+          raw = await asyncio.wait_for(ws.recv(), timeout=WS_PING_INTERVAL_S)
+          # ... handle message ...
+      except asyncio.TimeoutError:
+          await ws.send(json.dumps({"method": "ping"}))
+
+      # Drain pending subscription commands (non-blocking)
+      queue = state["ws_command_queue"]
+      while not queue.empty():
+          cmd, sub_type = queue.get_nowait()
+          if cmd == "subscribe":
+              await _send_sub(ws, {"type": sub_type, "coin": coin})
+          elif cmd == "unsubscribe":
+              await ws.send(json.dumps({
+                  "method": "unsubscribe",
+                  "subscription": {"type": sub_type, "coin": coin}
+              }))
+
+  # In main loop — to promote a coin to active watch list:
+  state["ws_command_queue"].put_nowait(("subscribe", "l2Book"))
+
+  # To demote — unsubscribe all:
+  for feed in ("trades", "activeAssetCtx", "candle", "l2Book"):
+      state["ws_command_queue"].put_nowait(("unsubscribe", feed))
+
+This keeps ws entirely owned by the WS task and the main loop fully decoupled.
+
+─────────────────────────────────────────────────────────────────────
+DECISION 3: sz_decimals IN STATE, NOT FROM EXCHANGE IN execute_entry
+─────────────────────────────────────────────────────────────────────
+
+execute_entry(coin, size_usd, trigger_price, state) must not take an exchange
+parameter — it should remain testable without mocking an exchange.
+
+Instead: at WS subscription time, populate sz_decimals in state:
+
+  # In main.py when subscribing a coin's WS feeds:
+  all_states[coin]["sz_decimals"] = exchange.get_sz_decimals(coin)
+
+  # Add to create_asset_state():
+  "sz_decimals": 0,   # populated at subscription time from exchange coin meta
+
+  # In ioc_entry.py execute_entry:
+  sz_decimals = state["sz_decimals"]   # already there — no exchange needed
+
+─────────────────────────────────────────────────────────────────────
+MAIN LOOP — CONCRETE VARIABLE DEFINITIONS
+─────────────────────────────────────────────────────────────────────
+
+All variables referenced in the scanner loop must be defined. Use these:
+
+  # Equity — fetch once at startup, update after every closed position:
+  equity = float(
+      (await exchange.get_user_state())["marginSummary"]["accountValue"]
+  )
+  # Cache and refresh every N cycles rather than fetching on every trade.
+
+  # Open positions — maintain a local set updated on every fill:
+  open_positions: list[str] = []   # list of coin names currently held short
+
+  # trigger_price — current mid price at the moment trigger fires:
+  current_mid   = float(list(state["price_series"])[-1]) if state["price_series"] else 0.0
+  trigger_price = current_mid   # trigger fires at current price
+
+  # stop_distance — must be computed before position sizing:
+  atr_14 = compute_atr(
+      state["high_series_5m"], state["low_series_5m"], state["close_series_5m"]
+  )
+  swing_high     = max(list(state["price_series"])[-15:]) if len(state["price_series"]) >= 15 else current_mid
+  prices_60      = list(state["price_series"])[-60:] if len(state["price_series"]) >= 60 else []
+  high_vol       = (max(prices_60) - min(prices_60)) / current_mid > HIGH_VOL_1H_RANGE_PCT if prices_60 else False
+  stop_distance  = calculate_stop_distance(current_mid, atr_14, swing_high, high_vol)
+
+─────────────────────────────────────────────────────────────────────
+ASSET INDEX AND sz_decimals — BUILD AND CACHE AT STARTUP
+─────────────────────────────────────────────────────────────────────
+
+Add to ExchangeAdapter:
+
+  async def build_coin_meta(self) -> None:
+      """Call once at startup before any orders or subscriptions."""
+      response = await rest_post("/info", {"type": "meta"})
+      self.coin_meta = {
+          asset["name"]: {
+              "asset_index": i,
+              "sz_decimals": asset["szDecimals"],
+          }
+          for i, asset in enumerate(response["universe"])
+      }
+
+  def get_sz_decimals(self, coin: str) -> int:
+      return self.coin_meta[coin]["sz_decimals"]
+
+  def get_asset_index(self, coin: str) -> int:
+      return self.coin_meta[coin]["asset_index"]
+
+  async def get_user_state(self) -> dict:
+      return await rest_post("/info", {
+          "type": "clearinghouseState",
+          "user": self._wallet_address,
+      })
+
+  async def get_open_positions(self) -> list:
+      state = await self.get_user_state()
+      return [p for p in state["assetPositions"]
+              if float(p["position"]["szi"]) != 0]
+
+  async def cancel_all_orders(self) -> None:
+      """Called on clean shutdown — cancels all resting orders."""
+      open_orders = await rest_post("/info", {
+          "type": "openOrders", "user": self._wallet_address
+      })
+      for order in open_orders:
+          cancel_action = {"type": "cancel", "cancels": [
+              {"a": order["coin"], "o": order["oid"]}
+          ]}
+          await self._post("/exchange", self._sign_action(cancel_action))
+
+─────────────────────────────────────────────────────────────────────
+DRY RUN FLAG
+─────────────────────────────────────────────────────────────────────
+
+  # In config/settings.py
+  DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+
+  # In scanner loop inside trigger evaluation:
+  if evaluate_trigger(state, trigger_price, current_mid):
+      log.info("TRIGGER FIRED", coin=coin, trigger_price=trigger_price,
+               dry_run=settings.DRY_RUN)
+      if not settings.DRY_RUN:
+          result = await execute_entry(coin, size_usd, trigger_price, state)
+
+Default DRY_RUN=true. Only set false after 48-72h dry run validates signal frequency.
+
+─────────────────────────────────────────────────────────────────────
+SCANNER LOOP TIMING
+─────────────────────────────────────────────────────────────────────
+
+  async def scanner_loop(self):
+      while True:
+          loop_start = time.time()
+          try:
+              await self.run_one_cycle()
+          except Exception as e:
+              log.error("Scanner cycle failed", error=str(e))
+          elapsed   = time.time() - loop_start
+          sleep_for = max(0.0, 30.0 - elapsed)
+          await asyncio.sleep(sleep_for)
+
+─────────────────────────────────────────────────────────────────────
+GRACEFUL SHUTDOWN
+─────────────────────────────────────────────────────────────────────
+
+  import signal
+
+  def setup_signal_handlers(loop, exchange):
+      for sig in (signal.SIGINT, signal.SIGTERM):
+          loop.add_signal_handler(
+              sig, lambda: asyncio.create_task(shutdown(exchange))
+          )
+
+  async def shutdown(exchange):
+      log.info("Shutdown: cancelling open orders")
+      await exchange.cancel_all_orders()
+      tasks = [t for t in asyncio.all_tasks()
+               if t is not asyncio.current_task()]
+      for task in tasks:
+          task.cancel()
+      log.info("Shutdown complete")
+
+Note: cancel orders on clean shutdown, do NOT flatten positions.
+Position flattening only happens on watchdog trigger (process freeze).
+
+─────────────────────────────────────────────────────────────────────
+FULL MAIN LOOP STRUCTURE
+─────────────────────────────────────────────────────────────────────
 
 Implement `main.py`:
 
 async def main():
-  1. Load config from environment (dotenv)
-  2. Initialise ExchangeAdapter (testnet by default)
-  3. Create all_states = {coin: create_asset_state() for coin in universe_coins}
-  4. Start HeartbeatMonitor and watchdog thread
-  5. await bootstrap_universe_funding(universe_coins, all_states)
-  6. Start ws_connection_manager tasks for all coins (asyncio.gather)
-  7. Start regime refresh loop (refresh_1h_closes every 60 min)
-  8. Main scanner loop every 30s:
-     a. if not daily_loss_tracker.is_trading_allowed(): continue
-     b. gate12 = await run_universe_scanner(universe_coins, all_states)
-     c. new_watchlist = await promote_to_watch_list(gate12, current_watchlist, all_states, now)
-     d. Handle promotions: subscribe_watchlist_feeds for new entries
-     e. Handle demotions: reset_warmup_state + unsubscribe for removed coins
-     f. regime = regime_filter(cached_1h_closes['BTC'], current_watchlist, cached_1h_closes)
-     g. For each active watch-list coin: evaluate_trigger → if fires → execute_entry
+  1.  Load config (dotenv)
+  2.  Initialise ExchangeAdapter (mainnet or testnet from HL_TESTNET env var)
+  3.  await exchange.build_coin_meta()
+  4.  all_states = {coin: create_asset_state() for coin in universe_coins}
+  5.  For each coin: all_states[coin]["ws_command_queue"] = asyncio.Queue()
+  6.  For each coin: all_states[coin]["sz_decimals"] = exchange.get_sz_decimals(coin)
+  7.  equity = float((await exchange.get_user_state())["marginSummary"]["accountValue"])
+  8.  Start HeartbeatMonitor and watchdog thread
+  9.  Setup signal handlers
+  10. await bootstrap_universe_funding(universe_coins, all_states)
+  11. Launch ws_connection_manager tasks (one per coin, asyncio.gather)
+  12. Launch regime refresh loop (refresh_1h_closes every REGIME_CANDLE_HISTORY_HOURS)
+  13. Run scanner_loop():
+      a. if not daily_loss_tracker.is_trading_allowed(): log, skip cycle
+      b. gate12 = await run_universe_scanner(universe_coins, all_states)
+      c. new_watchlist = await promote_to_watch_list(
+             gate12, current_watchlist, all_states, now)
+      d. For newly promoted coins:
+           state["ws_command_queue"].put_nowait(("subscribe", "l2Book"))
+           state["is_on_watchlist"] = True
+      e. For demoted watch-list coins (in current but not in new):
+           reset_warmup_state(coin, state)
+           for feed in ("trades", "activeAssetCtx", "candle", "l2Book"):
+               state["ws_command_queue"].put_nowait(("unsubscribe", feed))
+           state["is_on_watchlist"] = False
+      f. For warm-up coins that dropped from gate12:
+           reset_warmup_state(coin, state)
+           for feed in ("trades", "activeAssetCtx", "candle"):
+               state["ws_command_queue"].put_nowait(("unsubscribe", feed))
+      g. regime = regime_filter(cached_1h_closes.get("BTC", []),
+                                current_watchlist, cached_1h_closes)
+      h. if regime == "DISABLED": log and skip trigger evaluation this cycle
+      i. open_positions = [c for c in universe_coins
+                           if all_states[c]["position_state"] == "open"]
+      j. For each coin in current_watchlist:
+           if state["has_data_gap"]: continue
+           if len(state["price_series"]) == 0: continue
+           current_mid   = float(list(state["price_series"])[-1])
+           if current_mid == 0: continue
+           trigger_price = current_mid   # snapshot at detection time; drift checked in execute_entry
+           if not evaluate_trigger(state, trigger_price, current_mid): continue
+           atr_14        = compute_atr(state["high_series_5m"],
+                                       state["low_series_5m"],
+                                       state["close_series_5m"])
+           swing_high    = max(list(state["price_series"])[-15:])
+           prices_60     = list(state["price_series"])[-60:]
+           high_vol      = ((max(prices_60) - min(prices_60)) / current_mid
+                            > HIGH_VOL_1H_RANGE_PCT) if prices_60 else False
+           stop_distance = calculate_stop_distance(
+                               current_mid, atr_14, swing_high, high_vol)
+           size_usd      = calculate_position_size(
+                               equity, regime, state["squeeze_score"], stop_distance)
+           if size_usd == 0: continue
+           if not correlation_check_passes(coin, open_positions): continue
+           if len(open_positions) >= MAX_CONCURRENT_POSITIONS: continue
+           log.info("TRIGGER FIRED", coin=coin, dry_run=settings.DRY_RUN)
+           if not settings.DRY_RUN:
+               result = await execute_entry(coin, size_usd, trigger_price, state)
+               if result and result.status == "filled":
+                   state["position_state"] = "open"
+                   open_positions.append(coin)
 
-Implement `config/settings.py`:
-  Load all settings from environment variables with sensible defaults.
-  Expose as a Settings dataclass or simple module-level constants.
-
-Implement `scripts/paper_trade.py`:
-  Thin wrapper that sets HL_TESTNET=true and calls main().
-
-Implement `scripts/live_trade.py`:
-  Same but requires explicit confirmation prompt before starting.
+Implement `config/settings.py`: Settings dataclass from environment.
+Implement `scripts/paper_trade.py`: sets DRY_RUN=true, calls main(), prints banner.
+Implement `scripts/live_trade.py`: prompts 'Type CONFIRM to start live trading: ',
+  aborts unless user types exactly CONFIRM, sets DRY_RUN=false, calls main().
 ```
 
 ### Files
-- `oms/execution_adapter.py` — wire signing
+
+- `oms/execution_adapter.py` — add signing via eth_account, build_coin_meta,
+  get_user_state, cancel_all_orders
+- `oms/ioc_entry.py` — use state["sz_decimals"] instead of exchange parameter
+- `shared/state_factory.py` — add ws_command_queue and sz_decimals fields
+- `market_data/ws_manager.py` — drain ws_command_queue in message loop
 - `main.py`
 - `config/settings.py`
 - `scripts/paper_trade.py`
 - `scripts/live_trade.py`
 
 ### Validation
+
+**Step 1 — Verify signing import path**
+
 ```bash
-# Testnet smoke test (requires .env with testnet credentials)
+python -c "
+import hyperliquid, os
+print('SDK location:', hyperliquid.__file__)
+# Find the signing module — check utils/signing.py or similar
+import importlib.util, pathlib
+sdk_dir = pathlib.Path(hyperliquid.__file__).parent
+print('Signing candidates:')
+for f in sdk_dir.rglob('sign*.py'): print(' ', f)
+for f in sdk_dir.rglob('*signing*'): print(' ', f)
+"
+```
+
+**Step 2 — Smoke test: account state + order + cancel**
+
+```bash
+python - << 'EOF'
+import asyncio, os
+from dotenv import load_dotenv
+from market_data.universe_snapshotter import rest_post
+from oms.execution_adapter import ExchangeAdapter
+
+load_dotenv()
+
+async def smoke_test():
+    ex = ExchangeAdapter(
+        os.getenv("HL_API_WALLET_ADDRESS"),
+        os.getenv("HL_PRIVATE_KEY"),
+        testnet=False
+    )
+    await ex.build_coin_meta()
+
+    # 1. Account state
+    user_state = await ex.get_user_state()
+    print("Account value:", user_state["marginSummary"]["accountValue"])
+
+    # 2. sz_decimals cached correctly
+    print("ETH sz_decimals:", ex.get_sz_decimals("ETH"))
+    print("ETH asset_index:", ex.get_asset_index("ETH"))
+
+    # 3. Place a limit order far from market, cancel immediately
+    result = await ex.place_limit_order("ETH", "sell", 0.01, "1.0", tif="Gtc")
+    print("Order result:", result)
+    statuses = result["response"]["data"]["statuses"]
+    print("statuses[0]:", statuses[0])   # must be {"resting": {"oid": ...}}
+    oid = statuses[0]["resting"]["oid"]
+
+    await ex.cancel_all_orders()
+    print("Cancelled OK")
+
+asyncio.run(smoke_test())
+EOF
+```
+
+**Step 3 — Queue wiring test**
+
+```bash
 python -c "
 import asyncio
-from oms.execution_adapter import ExchangeAdapter
-import os; from dotenv import load_dotenv; load_dotenv()
-async def test():
-    ex = ExchangeAdapter(os.getenv('HL_API_WALLET_ADDRESS'), os.getenv('HL_PRIVATE_KEY'), testnet=True)
-    positions = await ex.get_open_positions()
-    print(f'Open positions: {positions}')
-    await ex.close()
-asyncio.run(test())
+from shared.state_factory import create_asset_state
+state = create_asset_state()
+state['ws_command_queue'] = asyncio.Queue()
+state['ws_command_queue'].put_nowait(('subscribe', 'l2Book'))
+cmd, feed = state['ws_command_queue'].get_nowait()
+assert cmd == 'subscribe' and feed == 'l2Book'
+print('Queue wiring OK')
 "
+```
+
+**Step 4 — 48–72h dry run**
+
+```bash
+DRY_RUN=true python scripts/live_trade.py
+# Confirm in logs:
+# - funding_series populated for all coins after bootstrap
+# - Gate 1 fires for some coins (if zero: check funding cadence)
+# - 2-5 coins on watch list at any time
+# - "TRIGGER FIRED dry_run=True" appears but no orders placed
+# - No event loop blocking (WS messages still arriving during order evaluation)
+
+# Funding cadence check:
+python - << 'EOF'
+import asyncio, time
+from market_data.universe_snapshotter import rest_post
+async def check():
+    r = await rest_post('/info', {'type': 'fundingHistory', 'coin': 'ETH',
+        'startTime': int((time.time() - 49 * 3600) * 1000)})
+    times = [e['time'] for e in r[-10:]]
+    gaps  = [times[i+1] - times[i] for i in range(len(times) - 1)]
+    print(f'Cadence gaps (ms): {gaps}')
+    print(f'Expected ~3600000 (hourly). If ~28800000: cadence is 8-hourly.')
+asyncio.run(check())
+EOF
+```
+
+**Step 5 — Enable live trading**
+
+```bash
+# Only after dry run passes all checks above
+DRY_RUN=false python scripts/live_trade.py
+# Type CONFIRM at the prompt
 ```
 
 ---
@@ -979,6 +1393,7 @@ asyncio.run(test())
 ## Stage 13 — Backtester
 
 ### Prompt
+
 ```
 You are implementing the AltShortBot trading system. Your task is Stage 13: backtester.
 
@@ -1048,6 +1463,7 @@ Write basic tests in `tests/unit/test_backtest.py`:
 ```
 
 ### Files
+
 - `backtest/data_loader.py`
 - `backtest/slippage_model.py`
 - `backtest/metrics.py`
@@ -1056,6 +1472,7 @@ Write basic tests in `tests/unit/test_backtest.py`:
 - `tests/unit/test_backtest.py`
 
 ### Validation
+
 ```bash
 pytest tests/unit/test_backtest.py -v
 # Run backtest on one coin, short window (requires network)
@@ -1071,12 +1488,14 @@ pytest tests/unit/test_backtest.py -v
 **These are not code stages. They are go/no-go checkpoints.**
 
 ### Gate 1: Unit test coverage
+
 ```bash
 pytest tests/unit/ -v --tb=short
 # Every stage's tests must pass. Zero failures permitted.
 ```
 
 ### Gate 2: Funding cadence validation
+
 ```bash
 python -c "
 import asyncio, time
@@ -1095,6 +1514,7 @@ asyncio.run(check())
 ```
 
 ### Gate 3: Backtest metrics
+
 ```
 Run scripts/bootstrap.py on at least 6 months of data for 5+ coins.
 Required before paper trading:
@@ -1105,6 +1525,7 @@ Required before paper trading:
 ```
 
 ### Gate 4: Paper trade (2 weeks minimum)
+
 ```
 Run scripts/paper_trade.py (testnet) for 2 weeks.
 Required before live capital:
@@ -1115,6 +1536,7 @@ Required before live capital:
 ```
 
 ### Gate 5: Live Phase 3 criteria
+
 ```
 Max 3 positions, $100–$200 each, isolated margin only.
 Required before scaling:
@@ -1127,18 +1549,18 @@ Required before scaling:
 
 ## Quick Reference: PRD Section Mapping
 
-| Stage | PRD Sections |
-|---|---|
-| 1 — Helpers | 3.1, 3.2, 3.3, 3.4 |
-| 2 — VwapBuffer, DeltaAggregator | 3.4, 3.5, 7.1 |
-| 3 — LiquidationModel | 5.1, 5.2, 5.3 |
-| 4 — Data Ingestion | 2.6 (Rules + Path A + Path B) |
-| 5 — Gates 1, 2, 3 | 4.1, 4.2, 4.3, 4.4 |
-| 6 — Regime Filter | 6 |
-| 7 — Trigger Engine + Message Handler | 7.1, 7.2, 7.3 |
-| 8 — IOC Execution | 8.1, 8.2, 8.3, 8.4 |
-| 9 — Risk Engine | 9.1–9.7 |
-| 10 — OMS Core | 2.9, 2.10, 2.11 |
-| 11 — WS Manager | 14 |
-| 12 — Main Loop | 2.8, 2.3 |
-| 13 — Backtester | 11 |
+| Stage                                | PRD Sections                  |
+| ------------------------------------ | ----------------------------- |
+| 1 — Helpers                          | 3.1, 3.2, 3.3, 3.4            |
+| 2 — VwapBuffer, DeltaAggregator      | 3.4, 3.5, 7.1                 |
+| 3 — LiquidationModel                 | 5.1, 5.2, 5.3                 |
+| 4 — Data Ingestion                   | 2.6 (Rules + Path A + Path B) |
+| 5 — Gates 1, 2, 3                    | 4.1, 4.2, 4.3, 4.4            |
+| 6 — Regime Filter                    | 6                             |
+| 7 — Trigger Engine + Message Handler | 7.1, 7.2, 7.3                 |
+| 8 — IOC Execution                    | 8.1, 8.2, 8.3, 8.4            |
+| 9 — Risk Engine                      | 9.1–9.7                       |
+| 10 — OMS Core                        | 2.9, 2.10, 2.11               |
+| 11 — WS Manager                      | 14                            |
+| 12 — Main Loop                       | 2.8, 2.3                      |
+| 13 — Backtester                      | 11                            |
