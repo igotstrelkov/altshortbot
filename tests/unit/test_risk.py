@@ -201,37 +201,40 @@ class TestCalculateStopDistance:
 # ── calculate_position_size ───────────────────────────────────────────────────
 
 class TestCalculatePositionSize:
+    # Pass explicit risk_pct so tests are independent of .env overrides.
+    R = 0.01
+
     def test_normal_regime_correct_notional(self) -> None:
         # $10k equity, 1% risk = $100 budget, 2% stop → $100 / 0.02 = $5000 notional
-        result = calculate_position_size(10_000.0, "NORMAL", 0, 0.02)
+        result = calculate_position_size(10_000.0, "NORMAL", 0, 0.02, risk_pct=self.R)
         assert result == pytest.approx(5000.0)
 
     def test_reduced_regime_halves_risk_budget(self) -> None:
         # $10k equity, 0.5% effective risk = $50, 2% stop → $2500 notional
-        result = calculate_position_size(10_000.0, "REDUCED", 0, 0.02)
+        result = calculate_position_size(10_000.0, "REDUCED", 0, 0.02, risk_pct=self.R)
         assert result == pytest.approx(2500.0)
 
     def test_disabled_regime_returns_zero(self) -> None:
-        result = calculate_position_size(10_000.0, "DISABLED", 0, 0.02)
+        result = calculate_position_size(10_000.0, "DISABLED", 0, 0.02, risk_pct=self.R)
         assert result == pytest.approx(0.0)
 
     def test_squeeze_hard_block_returns_zero(self) -> None:
-        result = calculate_position_size(10_000.0, "NORMAL", SQUEEZE_HARD_BLOCK_SCORE, 0.02)
+        result = calculate_position_size(10_000.0, "NORMAL", SQUEEZE_HARD_BLOCK_SCORE, 0.02, risk_pct=self.R)
         assert result == pytest.approx(0.0)
 
     def test_squeeze_reduce_applies_multiplier(self) -> None:
-        base = calculate_position_size(10_000.0, "NORMAL", 0, 0.02)
-        reduced = calculate_position_size(10_000.0, "NORMAL", SQUEEZE_REDUCE_SCORE, 0.02)
+        base = calculate_position_size(10_000.0, "NORMAL", 0, 0.02, risk_pct=self.R)
+        reduced = calculate_position_size(10_000.0, "NORMAL", SQUEEZE_REDUCE_SCORE, 0.02, risk_pct=self.R)
         assert reduced == pytest.approx(base * SQUEEZE_REDUCE_MULTIPLIER)
 
     def test_raises_on_non_positive_stop_distance(self) -> None:
         with pytest.raises(ValueError):
-            calculate_position_size(10_000.0, "NORMAL", 0, 0.0)
+            calculate_position_size(10_000.0, "NORMAL", 0, 0.0, risk_pct=self.R)
         with pytest.raises(ValueError):
-            calculate_position_size(10_000.0, "NORMAL", 0, -0.01)
+            calculate_position_size(10_000.0, "NORMAL", 0, -0.01, risk_pct=self.R)
 
     def test_unknown_regime_returns_zero(self) -> None:
-        result = calculate_position_size(10_000.0, "UNKNOWN", 0, 0.02)
+        result = calculate_position_size(10_000.0, "UNKNOWN", 0, 0.02, risk_pct=self.R)
         assert result == pytest.approx(0.0)
 
 

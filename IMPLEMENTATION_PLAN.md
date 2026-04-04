@@ -1649,11 +1649,12 @@ async def check():
     times = [e['time'] for e in r[-10:]]
     gaps = [times[i+1]-times[i] for i in range(len(times)-1)]
     print(f'Cadence gaps (ms): {gaps}')
-    print(f'Expected: ~3600000ms (hourly)')
+    print(f'Expected: ~28800000ms (8-hourly settlement)')
 asyncio.run(check())
 "
-# Confirm hourly cadence. If different, update GATE1_MIN_POSITIVE_HOURS
-# and the bootstrap logic before proceeding.
+# Confirm 8h cadence. Hyperliquid funding settles 3x/day (every 8h).
+# The per-hour rate is derived by dividing raw rate by 8 (FUNDING_API_TO_HOURLY_DIVISOR).
+# If cadence differs, update GATE1_MIN_POSITIVE_HOURS and bootstrap logic before proceeding.
 ```
 
 ### Gate 3: Backtest metrics

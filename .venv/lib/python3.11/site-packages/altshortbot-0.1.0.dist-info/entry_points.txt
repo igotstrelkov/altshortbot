@@ -1,4 +1,0 @@
-[console_scripts]
-altshortbot-backtest = scripts.bootstrap:main
-altshortbot-live = scripts.live_trade:main
-altshortbot-paper = scripts.paper_trade:main

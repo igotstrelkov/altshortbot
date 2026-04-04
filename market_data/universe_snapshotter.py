@@ -80,11 +80,18 @@ def ingest_asset_ctx(
 
     NEVER writes to funding_series — that is Path A's exclusive responsibility.
     """
-    mark_px = float(ctx["markPx"])
-    oracle_px = float(ctx["oraclePx"])
+    try:
+        mark_px = float(ctx["markPx"])
+        oracle_px = float(ctx["oraclePx"])
+    except (TypeError, ValueError):
+        return  # coin has no price data yet (newly listed / inactive)
 
     if now - state["last_oi_append_ts"] >= _OI_THROTTLE_S:
-        state["oi_series"].append(float(ctx["openInterest"]))
+        try:
+            oi = float(ctx["openInterest"])
+        except (TypeError, ValueError):
+            oi = 0.0
+        state["oi_series"].append(oi)
         state["price_series"].append(mark_px)
         state["last_oi_append_ts"] = now
         update_liq_model_from_candle(state, mark_px, now)

@@ -8,7 +8,6 @@ from typing import Any
 
 import structlog
 
-from oms.execution_adapter import place_limit_order
 from oms.order_parser import parse_order_status
 from oms.price_formatter import format_price
 from shared.constants import (
@@ -31,6 +30,7 @@ async def place_ioc_aggressive(
     size_coins: float,
     reference_price: float,
     sz_decimals: int,
+    exchange: Any,
     slippage_pct: float | None = None,
 ) -> dict[str, Any]:
     """
@@ -47,7 +47,7 @@ async def place_ioc_aggressive(
         raw_px = reference_price * (1 + slippage_pct)
 
     limit_px_str = format_price(raw_px, sz_decimals)
-    return await place_limit_order(coin, side, size_coins, limit_px_str, tif="Ioc")
+    return await exchange.place_limit_order(coin, side, size_coins, limit_px_str, tif="Ioc")
 
 
 async def execute_entry(
@@ -55,6 +55,7 @@ async def execute_entry(
     size_usd: float,
     trigger_price: float,
     state: dict[str, Any],
+    exchange: Any,
 ) -> ParsedOrderStatus | None:
     """
     Full two-step IOC entry (PRD Section 8.3).
@@ -83,7 +84,7 @@ async def execute_entry(
     # ── Step 1: primary passive IOC ───────────────────────────────────────────
     raw_limit_px = mid * (1 + LIMIT_ORDER_OFFSET)
     limit_px_str = format_price(raw_limit_px, sz_decimals)
-    raw = await place_limit_order(coin, "sell", size_coins, limit_px_str, tif="Ioc")
+    raw = await exchange.place_limit_order(coin, "sell", size_coins, limit_px_str, tif="Ioc")
     primary = parse_order_status(raw)
 
     if primary is None:
@@ -109,7 +110,7 @@ async def execute_entry(
                 slippage=f"{slippage:.3%}",
             )
             current_mid: float = list(state["price_series"])[-1]
-            await place_ioc_aggressive(coin, "buy", size_coins, current_mid, sz_decimals)
+            await place_ioc_aggressive(coin, "buy", size_coins, current_mid, sz_decimals, exchange)
             return None
         if slippage > MAX_SLIPPAGE:
             log.warning("execute_entry_high_slippage", coin=coin, slippage=f"{slippage:.3%}")
@@ -157,7 +158,7 @@ async def execute_entry(
         return None
 
     log.info("execute_entry_sending_fallback", coin=coin)
-    raw_fb = await place_ioc_aggressive(coin, "sell", size_coins, current_mid, sz_decimals)
+    raw_fb = await place_ioc_aggressive(coin, "sell", size_coins, current_mid, sz_decimals, exchange)
     fallback = parse_order_status(raw_fb)
 
     if fallback and fallback.status == "filled":

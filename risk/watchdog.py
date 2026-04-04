@@ -68,9 +68,12 @@ async def emergency_flatten_all(exchange: Any) -> None:
     """
     Flatten all open positions via aggressive IOC orders.
     Called from watchdog thread via asyncio.run() — runs in a fresh event loop.
-    Do not reuse the main-loop exchange client; construct a fresh REST client if needed.
+    Reset the aiohttp session so it is recreated in this event loop, not the
+    now-dead main loop (aiohttp 3.9+ enforces event loop binding on sessions).
     """
     from oms.ioc_entry import place_ioc_aggressive  # local import breaks circular dep
+
+    exchange._session = None  # force new session bound to this event loop
 
     positions: list[dict[str, Any]] = await exchange.get_open_positions()
     for pos in positions:
@@ -81,7 +84,7 @@ async def emergency_flatten_all(exchange: Any) -> None:
         sz_decimals: int = pos.get("szDecimals", 0)
         try:
             await place_ioc_aggressive(
-                coin, side, size, mid, sz_decimals,
+                coin, side, size, mid, sz_decimals, exchange,
                 slippage_pct=IOC_EMERGENCY_SLIPPAGE_PCT,
             )
             log.info("watchdog_flatten_sent", coin=coin, side=side, size=size)

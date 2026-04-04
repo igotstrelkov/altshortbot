@@ -88,9 +88,13 @@ async def run_one_cycle(
     daily_loss_tracker: DailyLossTracker,
     equity: float,
     exchange: ExchangeAdapter,
+    ws_tasks: dict[str, asyncio.Task],
 ) -> list[str]:
     """
     Run one 30s scanner cycle. Returns updated watchlist.
+
+    WS connections are opened only for Gate 1+2 candidates (warm-up + watchlist),
+    not for the full universe. Hyperliquid allows 10 WS connections per IP.
     """
     now = time.time()
 
@@ -103,7 +107,22 @@ async def run_one_cycle(
     gate12 = await run_universe_scanner(universe_coins, all_states)
     new_watchlist = await promote_to_watch_list(gate12, current_watchlist, all_states, now)
 
-    # d. Promote new coins to active watch list
+    # d. Start WS tasks for new Gate 1+2 candidates; cancel tasks for coins that dropped out
+    gate12_set = set(gate12)
+    for coin in gate12_set:
+        if coin not in ws_tasks or ws_tasks[coin].done():
+            ws_tasks[coin] = asyncio.create_task(
+                run_ws_for_coin(coin, all_states, exchange)
+            )
+            log.info("ws_task_started", coin=coin)
+    for coin in list(ws_tasks):
+        if coin not in gate12_set:
+            ws_tasks[coin].cancel()
+            del ws_tasks[coin]
+            reset_warmup_state(coin, all_states[coin])
+            log.info("ws_task_cancelled", coin=coin)
+
+    # e. Promote new coins to active watch list
     for coin in new_watchlist:
         if coin not in current_watchlist:
             state = all_states[coin]
@@ -111,28 +130,13 @@ async def run_one_cycle(
             state["is_on_watchlist"] = True
             log.info("coin_promoted", coin=coin)
 
-    # e. Demote coins removed from watch list
+    # f. Demote coins removed from watch list
     for coin in current_watchlist:
         if coin not in new_watchlist:
             state = all_states[coin]
             reset_warmup_state(coin, state)
-            for feed in ("trades", "activeAssetCtx", "candle", "l2Book"):
-                state["ws_command_queue"].put_nowait(("unsubscribe", feed))
             state["is_on_watchlist"] = False
             log.info("coin_demoted", coin=coin)
-
-    # f. Unsubscribe warm-up coins that dropped out of gate12
-    prev_gate12_candidates = {
-        c for c in universe_coins if all_states[c].get("is_on_watchlist") is False
-        and all_states[c].get("ws_subscribed_at", 0) > 0
-        and c not in new_watchlist
-    }
-    for coin in prev_gate12_candidates:
-        if coin not in gate12 and coin not in new_watchlist:
-            state = all_states[coin]
-            reset_warmup_state(coin, state)
-            for feed in ("trades", "activeAssetCtx", "candle"):
-                state["ws_command_queue"].put_nowait(("unsubscribe", feed))
 
     # g. Regime filter
     regime = regime_filter(
@@ -202,7 +206,7 @@ async def run_one_cycle(
         )
 
         if not settings.DRY_RUN:
-            result = await execute_entry(coin, size_usd, trigger_price, state)
+            result = await execute_entry(coin, size_usd, trigger_price, state, exchange)
             if result and result.status == "filled":
                 state["position_state"] = "open"
                 open_positions.append(coin)
@@ -257,12 +261,9 @@ async def main() -> None:
     log.info("bootstrapping_funding")
     await bootstrap_universe_funding(universe_coins, all_states)
 
-    # 11. WS tasks (one per coin)
-    ws_tasks = [
-        asyncio.create_task(run_ws_for_coin(coin, all_states, exchange))
-        for coin in universe_coins
-    ]
-    log.info("ws_tasks_started", count=len(ws_tasks))
+    # 11. WS tasks — started dynamically per Gate 1+2 candidate (not for full universe)
+    # Hyperliquid limit: 10 WS connections per IP. Universe tier uses REST only.
+    ws_tasks: dict[str, asyncio.Task] = {}
 
     # 12. Regime refresh cache + background task
     cached_closes: dict[str, list[float]] = {}
@@ -284,6 +285,7 @@ async def main() -> None:
                 daily_loss_tracker=daily_loss_tracker,
                 equity=equity,
                 exchange=exchange,
+                ws_tasks=ws_tasks,
             )
         except Exception as exc:
             log.error("scanner_cycle_failed", error=str(exc))

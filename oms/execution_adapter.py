@@ -193,6 +193,19 @@ class ExchangeAdapter:
             "/info",
             {"type": "clearinghouseState", "user": self._wallet_address},
         )
+        # For unified accounts, USDC lives in spot until a perps position is opened.
+        # Supplement accountValue with spot USDC if clearinghouse shows 0.
+        if float(result.get("marginSummary", {}).get("accountValue", 0)) == 0:
+            spot = await rest_post(
+                "/info",
+                {"type": "spotClearinghouseState", "user": self._wallet_address},
+            )
+            usdc_balance = next(
+                (float(b["total"]) for b in spot.get("balances", []) if b["coin"] == "USDC"),
+                0.0,
+            )
+            if usdc_balance > 0:
+                result.setdefault("marginSummary", {})["accountValue"] = str(usdc_balance)
         return result
 
     async def get_open_positions(self) -> list[dict[str, Any]]:

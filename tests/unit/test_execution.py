@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -104,8 +104,15 @@ class TestParseOrderStatus:
 
 # ── execute_entry ─────────────────────────────────────────────────────────────
 
+def _mock_exchange(*responses: dict[str, Any]) -> MagicMock:
+    """Return a mock ExchangeAdapter whose place_limit_order returns the given responses."""
+    exchange = MagicMock()
+    exchange.place_limit_order = AsyncMock(side_effect=list(responses) if responses else None)
+    return exchange
+
+
 class TestExecuteEntry:
-    """Tests use patched place_limit_order via oms.execution_adapter."""
+    """Tests inject a mock ExchangeAdapter into execute_entry."""
 
     @pytest.fixture()
     def state(self) -> dict[str, Any]:
@@ -114,95 +121,82 @@ class TestExecuteEntry:
     async def test_returns_none_when_trigger_invalid(self, state: dict[str, Any]) -> None:
         # Trigger price far from current mid → drift > 1.5%
         from oms.ioc_entry import execute_entry
-        result = await execute_entry("ETH", 500.0, 1850.0, state)
+        result = await execute_entry("ETH", 500.0, 1850.0, state, _mock_exchange())
         assert result is None
 
     async def test_returns_none_when_size_too_small(self, state: dict[str, Any]) -> None:
         from oms.ioc_entry import execute_entry
         # size_usd=0.01 → size_coins*mid = 0.01 < MIN_ORDER_NOTIONAL_USD=10
-        result = await execute_entry("ETH", 0.01, 1800.0, state)
+        result = await execute_entry("ETH", 0.01, 1800.0, state, _mock_exchange())
         assert result is None
 
     async def test_returns_none_on_min_trade_ntl_rejected(self, state: dict[str, Any]) -> None:
         from oms.ioc_entry import execute_entry
-        with patch("oms.ioc_entry.place_limit_order", new_callable=AsyncMock) as mock_place:
-            mock_place.return_value = _error_raw("minTradeNtlRejected")
-            result = await execute_entry("ETH", 500.0, 1800.0, state)
+        exchange = _mock_exchange(_error_raw("minTradeNtlRejected"))
+        result = await execute_entry("ETH", 500.0, 1800.0, state, exchange)
         assert result is None
-        mock_place.assert_called_once()  # no fallback
+        exchange.place_limit_order.assert_called_once()  # no fallback
 
     async def test_returns_none_on_tick_rejected(self, state: dict[str, Any]) -> None:
         from oms.ioc_entry import execute_entry
-        with patch("oms.ioc_entry.place_limit_order", new_callable=AsyncMock) as mock_place:
-            mock_place.return_value = _error_raw("tickRejected")
-            result = await execute_entry("ETH", 500.0, 1800.0, state)
+        exchange = _mock_exchange(_error_raw("tickRejected"))
+        result = await execute_entry("ETH", 500.0, 1800.0, state, exchange)
         assert result is None
-        mock_place.assert_called_once()
+        exchange.place_limit_order.assert_called_once()
 
     async def test_returns_none_on_oracle_rejected(self, state: dict[str, Any]) -> None:
         from oms.ioc_entry import execute_entry
-        with patch("oms.ioc_entry.place_limit_order", new_callable=AsyncMock) as mock_place:
-            mock_place.return_value = _error_raw("oracleRejected")
-            result = await execute_entry("ETH", 500.0, 1800.0, state)
+        exchange = _mock_exchange(_error_raw("oracleRejected"))
+        result = await execute_entry("ETH", 500.0, 1800.0, state, exchange)
         assert result is None
-        mock_place.assert_called_once()
+        exchange.place_limit_order.assert_called_once()
 
     async def test_proceeds_to_fallback_on_ioc_cancel_rejected(self, state: dict[str, Any]) -> None:
         from oms.ioc_entry import execute_entry
-        fallback_raw = _filled_raw("1795.0", "0.28", 2)
-        with patch("oms.ioc_entry.place_limit_order", new_callable=AsyncMock) as mock_place:
-            mock_place.side_effect = [_error_raw("iocCancelRejected"), fallback_raw]
-            result = await execute_entry("ETH", 500.0, 1800.0, state)
+        exchange = _mock_exchange(_error_raw("iocCancelRejected"), _filled_raw("1795.0", "0.28", 2))
+        result = await execute_entry("ETH", 500.0, 1800.0, state, exchange)
         assert result is not None
         assert result.status == "filled"
-        assert mock_place.call_count == 2
+        assert exchange.place_limit_order.call_count == 2
 
     async def test_proceeds_to_fallback_on_unexpected_resting(self, state: dict[str, Any]) -> None:
         from oms.ioc_entry import execute_entry
-        fallback_raw = _filled_raw("1794.0", "0.28", 3)
-        with patch("oms.ioc_entry.place_limit_order", new_callable=AsyncMock) as mock_place:
-            mock_place.side_effect = [_resting_raw(10), fallback_raw]
-            result = await execute_entry("ETH", 500.0, 1800.0, state)
+        exchange = _mock_exchange(_resting_raw(10), _filled_raw("1794.0", "0.28", 3))
+        result = await execute_entry("ETH", 500.0, 1800.0, state, exchange)
         assert result is not None
         assert result.status == "filled"
-        assert mock_place.call_count == 2
+        assert exchange.place_limit_order.call_count == 2
 
     async def test_returns_none_when_parse_returns_none(self, state: dict[str, Any]) -> None:
         """None from parse_order_status triggers abort — no fallback sent."""
         from oms.ioc_entry import execute_entry
-        with patch("oms.ioc_entry.place_limit_order", new_callable=AsyncMock) as mock_place:
-            mock_place.return_value = {}  # malformed → parse returns None
-            result = await execute_entry("ETH", 500.0, 1800.0, state)
+        exchange = _mock_exchange({})  # malformed → parse returns None
+        result = await execute_entry("ETH", 500.0, 1800.0, state, exchange)
         assert result is None
-        mock_place.assert_called_once()  # no fallback
+        exchange.place_limit_order.assert_called_once()  # no fallback
 
     async def test_returns_filled_on_primary_fill(self, state: dict[str, Any]) -> None:
         from oms.ioc_entry import execute_entry
-        with patch("oms.ioc_entry.place_limit_order", new_callable=AsyncMock) as mock_place:
-            mock_place.return_value = _filled_raw("1800.5", "0.28", 7)
-            result = await execute_entry("ETH", 500.0, 1800.0, state)
+        exchange = _mock_exchange(_filled_raw("1800.5", "0.28", 7))
+        result = await execute_entry("ETH", 500.0, 1800.0, state, exchange)
         assert result is not None
         assert result.status == "filled"
         assert result.avg_px == pytest.approx(1800.5)
-        mock_place.assert_called_once()
+        exchange.place_limit_order.assert_called_once()
 
     async def test_abort_on_excessive_slippage(self, state: dict[str, Any]) -> None:
         """Fill at 1790 vs limit ~1800.9 = ~0.6% slippage > ABORT_SLIPPAGE."""
         from oms.ioc_entry import execute_entry
-        fill_raw = _filled_raw("1790.0", "0.28", 8)
-        flatten_raw = _filled_raw("1800.0", "0.28", 9)
-        with patch("oms.ioc_entry.place_limit_order", new_callable=AsyncMock) as mock_place:
-            mock_place.side_effect = [fill_raw, flatten_raw]
-            result = await execute_entry("ETH", 500.0, 1800.0, state)
+        exchange = _mock_exchange(_filled_raw("1790.0", "0.28", 8), _filled_raw("1800.0", "0.28", 9))
+        result = await execute_entry("ETH", 500.0, 1800.0, state, exchange)
         assert result is None
-        assert mock_place.call_count == 2  # primary + flatten buy
+        assert exchange.place_limit_order.call_count == 2  # primary + flatten buy
 
     async def test_returns_none_when_both_unfilled(self, state: dict[str, Any]) -> None:
         from oms.ioc_entry import execute_entry
-        with patch("oms.ioc_entry.place_limit_order", new_callable=AsyncMock) as mock_place:
-            mock_place.side_effect = [
-                _error_raw("iocCancelRejected"),
-                _error_raw("marketOrderNoLiquidityRejected"),
-            ]
-            result = await execute_entry("ETH", 500.0, 1800.0, state)
+        exchange = _mock_exchange(
+            _error_raw("iocCancelRejected"),
+            _error_raw("marketOrderNoLiquidityRejected"),
+        )
+        result = await execute_entry("ETH", 500.0, 1800.0, state, exchange)
         assert result is None

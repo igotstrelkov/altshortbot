@@ -56,6 +56,7 @@ def calculate_position_size(
     regime: str,
     squeeze_score: int,
     stop_distance_pct: float,
+    risk_pct: float | None = None,
 ) -> float:
     """
     Returns position NOTIONAL in USD (not risk budget).
@@ -65,7 +66,7 @@ def calculate_position_size(
     if stop_distance_pct <= 0:
         raise ValueError(f"stop_distance_pct must be positive, got {stop_distance_pct}")
 
-    risk_budget = account_equity * settings.RISK_PER_TRADE_PCT
+    risk_budget = account_equity * (risk_pct if risk_pct is not None else settings.RISK_PER_TRADE_PCT)
 
     regime_multipliers = {"NORMAL": 1.0, "REDUCED": 0.5, "DISABLED": 0.0}
     risk_budget *= regime_multipliers.get(regime, 0.0)

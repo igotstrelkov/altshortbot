@@ -31,7 +31,10 @@ async def run_universe_scanner(
         if state["has_data_gap"]:
             continue
 
-        rest_premium = float(ctx["premium"]) if "premium" in ctx else None
+        try:
+            rest_premium = float(ctx["premium"]) if ctx.get("premium") is not None else None
+        except (TypeError, ValueError):
+            rest_premium = None
         ingest_asset_ctx(ctx, state, now, rest_premium=rest_premium)
 
         if not gate1_passes(state["funding_series"], state["premium_series"]):

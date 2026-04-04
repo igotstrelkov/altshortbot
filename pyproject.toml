@@ -25,6 +25,9 @@ altshortbot-live  = "scripts.live_trade:main"
 altshortbot-paper = "scripts.paper_trade:main"
 altshortbot-backtest = "scripts.bootstrap:main"
 
+[tool.setuptools.packages.find]
+include = ["oms*", "risk*", "config*", "shared*", "backtest*", "strategy*", "market_data*", "scripts*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
