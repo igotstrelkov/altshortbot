@@ -9,7 +9,7 @@ from typing import Literal
 
 import structlog
 
-from shared.constants import DAILY_LOSS_DISABLE_PCT, DAILY_LOSS_KILL_PCT
+import config.settings as settings
 
 log = structlog.get_logger()
 
@@ -20,8 +20,15 @@ class DailyLossTracker:
     The 24h disable persists across midnight; kill_active does not.
     """
 
-    def __init__(self, account_equity: float) -> None:
+    def __init__(
+        self,
+        account_equity: float,
+        kill_pct: float | None = None,
+        disable_pct: float | None = None,
+    ) -> None:
         self.equity = account_equity
+        self.kill_pct = kill_pct if kill_pct is not None else settings.DAILY_LOSS_KILL_PCT
+        self.disable_pct = disable_pct if disable_pct is not None else settings.DAILY_LOSS_DISABLE_PCT
         self.daily_pnl = 0.0
         self.reset_date = datetime.utcnow().date()
         self.kill_active = False
@@ -33,7 +40,7 @@ class DailyLossTracker:
         self.daily_pnl += pnl_usd
         loss_pct = -self.daily_pnl / self.equity
 
-        if loss_pct >= DAILY_LOSS_DISABLE_PCT:
+        if loss_pct >= self.disable_pct:
             self.disable_until = datetime.utcnow() + timedelta(hours=24)
             log.warning(
                 "daily_loss_disable",
@@ -42,7 +49,7 @@ class DailyLossTracker:
             )
             return "DISABLE"
 
-        if loss_pct >= DAILY_LOSS_KILL_PCT:
+        if loss_pct >= self.kill_pct:
             self.kill_active = True
             log.warning("daily_loss_kill", loss_pct=f"{loss_pct:.2%}")
             return "KILL"

@@ -24,37 +24,41 @@ from shared.constants import (
 # ── DailyLossTracker ──────────────────────────────────────────────────────────
 
 class TestDailyLossTracker:
+    # Pass explicit thresholds so tests are independent of .env overrides.
+    KILL = 0.03
+    DISABLE = 0.05
+
     def test_ok_on_small_loss(self) -> None:
-        tracker = DailyLossTracker(10_000.0)
+        tracker = DailyLossTracker(10_000.0, kill_pct=self.KILL, disable_pct=self.DISABLE)
         result = tracker.record_close(-100.0)  # 1% — below KILL threshold
         assert result == "OK"
         assert tracker.is_trading_allowed()
 
     def test_kill_at_kill_threshold(self) -> None:
-        # DAILY_LOSS_KILL_PCT = 3% of 10k = $300
-        tracker = DailyLossTracker(10_000.0)
+        # 3% of 10k = $300
+        tracker = DailyLossTracker(10_000.0, kill_pct=self.KILL, disable_pct=self.DISABLE)
         result = tracker.record_close(-300.0)
         assert result == "KILL"
         assert tracker.kill_active
         assert not tracker.is_trading_allowed()
 
     def test_disable_at_disable_threshold(self) -> None:
-        # DAILY_LOSS_DISABLE_PCT = 5% of 10k = $500
-        tracker = DailyLossTracker(10_000.0)
+        # 5% of 10k = $500
+        tracker = DailyLossTracker(10_000.0, kill_pct=self.KILL, disable_pct=self.DISABLE)
         result = tracker.record_close(-500.0)
         assert result == "DISABLE"
         assert tracker.disable_until is not None
         assert not tracker.is_trading_allowed()
 
     def test_kill_accumulates_across_multiple_closes(self) -> None:
-        tracker = DailyLossTracker(10_000.0)
+        tracker = DailyLossTracker(10_000.0, kill_pct=self.KILL, disable_pct=self.DISABLE)
         tracker.record_close(-100.0)  # 1%
         tracker.record_close(-100.0)  # 2%
         result = tracker.record_close(-100.0)  # 3% → KILL
         assert result == "KILL"
 
     def test_kill_resets_at_midnight(self) -> None:
-        tracker = DailyLossTracker(10_000.0)
+        tracker = DailyLossTracker(10_000.0, kill_pct=self.KILL, disable_pct=self.DISABLE)
         tracker.record_close(-300.0)  # triggers KILL
         assert not tracker.is_trading_allowed()
 
@@ -66,7 +70,7 @@ class TestDailyLossTracker:
         assert not tracker.kill_active
 
     def test_disable_persists_across_midnight(self) -> None:
-        tracker = DailyLossTracker(10_000.0)
+        tracker = DailyLossTracker(10_000.0, kill_pct=self.KILL, disable_pct=self.DISABLE)
         tracker.record_close(-500.0)  # triggers DISABLE (24h)
         disable_until = tracker.disable_until
         assert disable_until is not None
@@ -82,7 +86,7 @@ class TestDailyLossTracker:
         assert tracker.disable_until == disable_until
 
     def test_disable_expires_after_24h(self) -> None:
-        tracker = DailyLossTracker(10_000.0)
+        tracker = DailyLossTracker(10_000.0, kill_pct=self.KILL, disable_pct=self.DISABLE)
         tracker.record_close(-500.0)
         # 25 hours later
         future = datetime.utcnow() + timedelta(hours=25)

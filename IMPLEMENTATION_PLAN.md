@@ -958,16 +958,26 @@ Add signing to it like this:
 
   from eth_account import Account
   from hyperliquid.utils.signing import sign_l1_action, get_timestamp_ms
-  # (exact import path — check SDK source if this differs)
+  # Verified import path for hyperliquid-python-sdk — confirmed correct.
+
+  # In __init__: create the Account object ONCE and reuse it.
+  self._wallet = Account.from_key(private_key)
+  self._is_mainnet = not testnet
 
   def _sign_action(self, action: dict) -> dict:
-      account   = Account.from_key(self._private_key)
-      nonce     = self.nonce_manager.next_nonce()
-      signature = sign_l1_action(account, action, nonce)
+      # Nonce must be a current timestamp in ms, NOT a monotonic counter.
+      # Hyperliquid rejects nonces it has already seen; a counter starting
+      # from 0 would be rejected after any process restart.
+      nonce     = get_timestamp_ms()
+      # sign_l1_action signature:
+      #   sign_l1_action(wallet, action, vault_address, nonce, expires_after, is_mainnet)
+      signature = sign_l1_action(self._wallet, action, None, nonce, None, self._is_mainnet)
       return {
-          "action":    action,
-          "nonce":     nonce,
-          "signature": signature,
+          "action":       action,
+          "nonce":        nonce,
+          "signature":    signature,
+          "vaultAddress": None,
+          "expiresAfter": None,
       }
 
   async def place_limit_order(self, coin, side, size_coins, price_str, tif='Gtc') -> dict:
@@ -989,18 +999,21 @@ Add signing to it like this:
       response = await self._post("/exchange", payload)
       return response
 
+  # _post reuses a single aiohttp.ClientSession stored as self._session.
+  # Do NOT create a new ClientSession per call — that opens/tears down a
+  # connection pool on every request and causes "Unclosed client session" warnings.
+  # Create self._session = aiohttp.ClientSession() in __init__ (or lazily on
+  # first call) and close it in close().
+
   async def _post(self, path: str, payload: dict) -> dict:
-      async with aiohttp.ClientSession() as session:
-          async with session.post(self.base_url + path, json=payload) as r:
-              return await r.json()
+      async with self._session.post(self.base_url + path, json=payload) as r:
+          return await r.json()
+
+  async def close(self) -> None:
+      await self._session.close()
 
 For Info calls (metaAndAssetCtxs, user_state, fundingHistory etc.) keep the
 existing rest_post from universe_snapshotter.py — those are already async.
-
-IMPORTANT: Verify sign_l1_action import path against the installed SDK version.
-Check: python -c "import hyperliquid; print(hyperliquid.__file__)"
-then inspect the signing module. The signing logic itself is correct; only the
-import path may differ.
 
 ─────────────────────────────────────────────────────────────────────
 DECISION 2: WS SUBSCRIPTIONS FROM THE MAIN LOOP
@@ -1133,11 +1146,18 @@ Add to ExchangeAdapter:
       open_orders = await rest_post("/info", {
           "type": "openOrders", "user": self._wallet_address
       })
-      for order in open_orders:
-          cancel_action = {"type": "cancel", "cancels": [
-              {"a": order["coin"], "o": order["oid"]}
-          ]}
-          await self._post("/exchange", self._sign_action(cancel_action))
+      if not open_orders:
+          return
+      # Batch all cancels into a single request.
+      # "a" must be the integer asset index, NOT the coin name string.
+      cancel_action = {
+          "type": "cancel",
+          "cancels": [
+              {"a": self.get_asset_index(order["coin"]), "o": order["oid"]}
+              for order in open_orders
+          ],
+      }
+      await self._post("/exchange", self._sign_action(cancel_action))
 
 ─────────────────────────────────────────────────────────────────────
 DRY RUN FLAG
@@ -1399,19 +1419,40 @@ You are implementing the AltShortBot trading system. Your task is Stage 13: back
 
 Reference: PRD Sections 11.1–11.4.
 
+─────────────────────────────────────────────────────────────────────
+DATA AVAILABILITY NOTE
+─────────────────────────────────────────────────────────────────────
+
+Gate 2 (OI divergence) requires historical open-interest series.
+Hyperliquid does not expose historical OI via any candle or snapshot
+endpoint — it is only available in real-time via metaAndAssetCtxs.
+Therefore: Gate 2 is SKIPPED in the backtester.
+The backtest pipeline is: Gate 1 (funding) → Gate 3 (price structure).
+Document this clearly in BacktestEngine.run() with a comment.
+
+─────────────────────────────────────────────────────────────────────
 Implement in `backtest/data_loader.py`:
+─────────────────────────────────────────────────────────────────────
 
 async def load_candles(coin: str, interval: str, start_ms: int, end_ms: int) -> pd.DataFrame:
-  - Fetches candleSnapshot in batches (max 5000 candles per request)
+  - Fetches candleSnapshot in batches of 5000 candles per request.
+    For 1m interval: 5000 candles = ~3.5 days. Loop until end_ms reached.
+  - Sleep 0.1s between batch requests to avoid rate limiting.
+  - Log progress: "Loading {coin} {interval}: batch {n}, {total} candles so far"
   - Returns DataFrame with columns: time, open, high, low, close, volume
-  - All numeric
+  - All values cast to float; time cast to int.
 
 async def load_funding_history(coin: str, start_ms: int, end_ms: int) -> pd.DataFrame:
-  - Fetches fundingHistory in batches
-  - Returns DataFrame with columns: time, funding_rate (÷8 applied), premium
-  - funding_rate is per-hour
+  - Fetches fundingHistory. Hyperliquid returns up to 500 entries per request.
+    Batch by startTime, advancing past the last returned timestamp each iteration.
+  - Sleep 0.1s between batch requests.
+  - Returns DataFrame with columns: time, funding_rate, premium
+  - funding_rate = float(entry['fundingRate']) / 8  (convert 8h rate to per-hour)
+  - premium = float(entry['premium']) if present, else 0.0
 
+─────────────────────────────────────────────────────────────────────
 Implement in `backtest/slippage_model.py`:
+─────────────────────────────────────────────────────────────────────
 
 def apply_entry_slippage(mid_price: float) -> float:
   Entry (short): fill_price = mid * (1 - SLIPPAGE_MODEL_PCT)  ← worse for short
@@ -1419,47 +1460,149 @@ def apply_entry_slippage(mid_price: float) -> float:
 def apply_exit_slippage(mid_price: float) -> float:
   Exit (cover): fill_price = mid * (1 + SLIPPAGE_MODEL_PCT)   ← worse for buyback
 
+─────────────────────────────────────────────────────────────────────
 Implement in `backtest/metrics.py`:
+─────────────────────────────────────────────────────────────────────
 
-def compute_metrics(trades: list) -> dict:
-  trades: list of dicts with keys: entry_px, exit_px, size_coins, funding_collected, entry_time, exit_time
-  Returns:
-    sharpe_ratio, max_drawdown, win_rate, expectancy_r, total_trades, total_pnl_pct
+def compute_metrics(trades: list[dict], initial_equity: float) -> dict:
+  Each trade dict has keys:
+    entry_px, exit_px, size_coins, funding_collected_usd,
+    entry_time, exit_time, stop_distance_pct
 
+  Definitions:
+  - pnl_usd per trade = (entry_px - exit_px) * size_coins + funding_collected_usd
+    (short: profit when exit_px < entry_px)
+  - pnl_pct per trade = pnl_usd / (entry_px * size_coins)
+  - r_multiple per trade = pnl_pct / stop_distance_pct
+    (R = 1.0 means the trade hit the stop exactly)
+  - win_rate = trades with pnl_usd > 0 / total trades
+  - expectancy_r = mean(r_multiple across all trades)
+  - total_pnl_pct = sum(pnl_usd) / initial_equity
+  - max_drawdown: peak-to-trough of cumulative pnl_usd curve
+  - sharpe_ratio: annualised Sharpe of per-trade pnl_pct series,
+    assuming 0 risk-free rate.
+    sharpe = mean(pnl_pct) / std(pnl_pct) * sqrt(trades_per_year)
+    trades_per_year = total_trades / years_in_backtest
+    Return 0.0 if fewer than 2 trades or std == 0.
+
+  Returns dict with keys:
+    sharpe_ratio, max_drawdown, win_rate, expectancy_r,
+    total_trades, total_pnl_pct
+
+─────────────────────────────────────────────────────────────────────
 Implement in `backtest/engine.py`:
+─────────────────────────────────────────────────────────────────────
 
 class BacktestEngine:
-  __init__(self, coins: list, start_date: str, end_date: str)
+  __init__(self, coins: list[str], start_date: str, end_date: str,
+           initial_equity: float = 10_000.0)
+  Dates as 'YYYY-MM-DD' strings, converted to ms timestamps internally.
 
   async def run(self) -> dict:
     For each coin:
-    1. Load 1m + 5m candles and hourly funding
-    2. Simulate 1-min bars:
-       a. Build oi_series and price_series from 1m closes (proxy for markPx)
-       b. Build funding_series from hourly funding (÷8 applied)
-       c. Apply gate1_passes, gate2_passes, gate3_score at each bar
-       d. If all gates pass: simulate entry with apply_entry_slippage
-       e. Simulate hold: track funding collected/paid (per-hour rate × hours held)
-       f. Exit on stop-loss, take-profit, or funding exit condition
-       g. Apply apply_exit_slippage on exit
-    3. Collect all trades → compute_metrics()
-    Return metrics per coin and aggregate
+    1. Load data:
+       - 1m candles via load_candles(coin, '1m', start_ms, end_ms)
+       - 5m candles via load_candles(coin, '5m', start_ms, end_ms)
+       - hourly funding via load_funding_history(coin, start_ms, end_ms)
 
-  BIAS RULES (from PRD Section 11.3):
-  - Gate 3 uses only data available at bar close (no look-ahead)
-  - VWAP computed from trades up to that bar (approximate from volume)
-  - Use per-hour funding rate active at entry time
-  - Slippage hurts shorts on both entry AND exit
+    2. Build lookup structures:
+       - funding_by_hour: dict mapping hour_timestamp → funding_rate
+         (key = timestamp floored to the hour)
+       - candles_5m_by_time: dict mapping 5m bar open_time → row
 
+    3. Simulate 1-min bars (iterate over 1m candles in order):
+       NOTE: Gate 2 is skipped — Hyperliquid historical OI is not available.
+
+       At each 1m bar (index i, timestamp t):
+
+       a. Append bar.close to price_series (deque maxlen=245).
+          This is the markPx proxy.
+
+       b. Build high_series_5m and close_series_5m (deque maxlen=24):
+          Every 5 bars (i % 5 == 4), look up the completed 5m candle whose
+          open_time == t - 4*60*1000. Append its high and close.
+          Use the 5m candle that covers bars [i-4 .. i].
+
+       c. Build funding_series (deque maxlen=48):
+          At each bar, look up funding_by_hour[floor(t, hour)].
+          Append only when the hour changes (i.e., append once per hour).
+
+       d. Build premium_series (deque maxlen=12):
+          Same cadence as funding — append once per hour from funding DataFrame.
+
+       e. Gate evaluation (no look-ahead — use only series as populated above):
+          - gate1 = gate1_passes(funding_series, premium_series)
+          - gate3 = gate3_score(price_series, high_series_5m, close_series_5m,
+                                vwap_5m=0.0)  # VWAP not available in backtest
+          - if not (gate1 and gate3 >= 2): continue
+
+       f. Skip if already in a position for this coin.
+
+       g. Entry:
+          entry_px = apply_entry_slippage(bar.close)
+          atr_14   = compute_atr(high_series_5m, low_series_5m, close_series_5m)
+          swing_high = max(list(price_series)[-15:]) if len(price_series) >= 15
+                       else bar.close
+          stop_distance_pct = calculate_stop_distance(
+              entry_px, atr_14, swing_high, high_volatility=False)
+          size_usd  = calculate_position_size(
+              initial_equity, 'NORMAL', squeeze_score=0, stop_distance_pct)
+          size_coins = size_usd / entry_px
+          stop_px    = entry_px * (1 + stop_distance_pct)
+          tp1_px     = entry_px * (1 - TP1_R_TARGET * stop_distance_pct)
+          tp2_px     = entry_px * (1 - TP2_R_TARGET * stop_distance_pct)
+          funding_collected_usd = 0.0
+          Record open position: {entry_px, size_coins, stop_px, tp1_px, tp2_px,
+                                  entry_time: t, stop_distance_pct,
+                                  tp1_closed: False}
+
+       h. If in position, check exit conditions on each subsequent bar:
+          current_px = bar.close
+          hour_key   = floor(t, hour)
+          funding_collected_usd += funding_by_hour.get(hour_key, 0.0)
+                                   * size_coins * current_px
+          (positive funding = shorts receive)
+
+          TP1: if not tp1_closed and current_px <= tp1_px:
+               exit half position at apply_exit_slippage(current_px)
+               tp1_closed = True; size_coins *= 0.5
+
+          TP2 / stop:
+          if current_px >= stop_px:
+               exit at apply_exit_slippage(current_px); record trade; close position
+          elif current_px <= tp2_px:
+               exit at apply_exit_slippage(current_px); record trade; close position
+
+          Funding exit: if check_funding_exit(funding_by_hour.get(hour_key, 0.0),
+                                               pnl_r):
+               exit at apply_exit_slippage(current_px); record trade; close position
+
+    4. If still in position at end of data: force-close at last bar close.
+
+    5. compute_metrics(trades, initial_equity) → metrics dict for this coin.
+
+    Return {"per_coin": {coin: metrics}, "aggregate": compute_metrics(all_trades, initial_equity)}
+
+─────────────────────────────────────────────────────────────────────
 Implement `scripts/bootstrap.py`:
+─────────────────────────────────────────────────────────────────────
+
   CLI entrypoint for running the backtester.
   Arguments: --coins ETH,SOL,... --start 2024-01-01 --end 2024-12-31
-  Prints metrics table. Saves trades CSV to logs/.
+             --equity 10000 (optional, default 10000)
+  Prints a metrics table per coin and aggregate row.
+  Saves trades to logs/backtest_trades_{timestamp}.csv.
 
-Write basic tests in `tests/unit/test_backtest.py`:
+─────────────────────────────────────────────────────────────────────
+Write unit tests in `tests/unit/test_backtest.py`:
+─────────────────────────────────────────────────────────────────────
+
 - apply_entry_slippage: fill < mid (worse for short)
 - apply_exit_slippage: fill > mid (worse for cover)
-- compute_metrics: correct sharpe and drawdown on synthetic trade list
+- compute_metrics: correct win_rate, total_pnl_pct, max_drawdown on
+  a synthetic 3-trade list (one winner, one loser, one breakeven)
+- compute_metrics: returns sharpe=0.0 when fewer than 2 trades
+- compute_metrics: max_drawdown is peak-to-trough of cumulative pnl curve
 ```
 
 ### Files

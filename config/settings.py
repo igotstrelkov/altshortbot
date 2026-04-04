@@ -39,6 +39,13 @@ HL_TESTNET: bool = _bool("HL_TESTNET", False)
 ACCOUNT_EQUITY_USD: float = _float("ACCOUNT_EQUITY_USD", 10_000.0)
 MAX_CONCURRENT_POSITIONS: int = _int("MAX_CONCURRENT_POSITIONS", 3)
 
+# ── Risk overrides ────────────────────────────────────────────────────────────
+# These default to the values in shared/constants.py.
+# Override in .env to tune without touching constants.
+RISK_PER_TRADE_PCT: float = _float("RISK_PER_TRADE_PCT", 0.01)
+DAILY_LOSS_KILL_PCT: float = _float("DAILY_LOSS_KILL_PCT", 0.03)
+DAILY_LOSS_DISABLE_PCT: float = _float("DAILY_LOSS_DISABLE_PCT", 0.05)
+
 # ── Safety ────────────────────────────────────────────────────────────────────
 # DRY_RUN=true: log triggers but place no orders.
 # Only set false after 48-72h dry run confirms signal frequency is plausible.

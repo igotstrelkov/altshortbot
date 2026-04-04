@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import structlog
 
+import config.settings as settings
 from shared.constants import (
     ATR_MULTIPLIER_HIGH_VOL,
     ATR_MULTIPLIER_NORMAL,
     FUNDING_EXIT_PNL_THRESHOLD_R,
     MIN_STOP_DISTANCE_PCT,
-    RISK_PER_TRADE_PCT,
     SQUEEZE_HARD_BLOCK_SCORE,
     SQUEEZE_REDUCE_MULTIPLIER,
     SQUEEZE_REDUCE_SCORE,
@@ -65,7 +65,7 @@ def calculate_position_size(
     if stop_distance_pct <= 0:
         raise ValueError(f"stop_distance_pct must be positive, got {stop_distance_pct}")
 
-    risk_budget = account_equity * RISK_PER_TRADE_PCT
+    risk_budget = account_equity * settings.RISK_PER_TRADE_PCT
 
     regime_multipliers = {"NORMAL": 1.0, "REDUCED": 0.5, "DISABLED": 0.0}
     risk_budget *= regime_multipliers.get(regime, 0.0)
