@@ -67,6 +67,7 @@ async def regime_refresh_loop(
     cached_closes: dict[str, list[float]],
 ) -> None:
     """Refresh 1h closes for regime filter every ~60 min."""
+    await asyncio.sleep(_REGIME_REFRESH_INTERVAL_S)  # skip first cycle — bootstrap already ran
     while True:
         try:
             fresh = await refresh_1h_closes(universe_coins)
@@ -276,7 +277,9 @@ async def main() -> None:
 
     # 10. Funding bootstrap
     log.info("bootstrapping_funding")
+    exchange.heartbeat_monitor.beat()
     await bootstrap_universe_funding(universe_coins, all_states)
+    exchange.heartbeat_monitor.beat()
 
     # 11. WS tasks — started dynamically per Gate 1+2 candidate (not for full universe)
     # Hyperliquid limit: 10 WS connections per IP. Universe tier uses REST only.
@@ -285,7 +288,9 @@ async def main() -> None:
     # 12. Regime refresh cache + background task
     cached_closes: dict[str, list[float]] = {}
     log.info("bootstrapping_regime_closes")
+    exchange.heartbeat_monitor.beat()
     cached_closes.update(await refresh_1h_closes(universe_coins))
+    exchange.heartbeat_monitor.beat()
     log.info("regime_closes_bootstrapped", coins=len(cached_closes))
     asyncio.create_task(regime_refresh_loop(universe_coins, cached_closes))
 
@@ -295,6 +300,7 @@ async def main() -> None:
 
     while True:
         loop_start = time.time()
+        exchange.heartbeat_monitor.beat()
         try:
             current_watchlist = await run_one_cycle(
                 universe_coins=universe_coins,
