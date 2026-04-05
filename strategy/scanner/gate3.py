@@ -3,7 +3,11 @@ from __future__ import annotations
 
 from collections import deque
 
+import structlog
+
 from shared.constants import FAILED_BREAKOUT_RECOVERY_THRESHOLD, GATE3_PRICE_FROM_HIGH_MAX
+
+log = structlog.get_logger()
 
 
 def gate3_score(
@@ -11,6 +15,7 @@ def gate3_score(
     high_series_5m: deque[float],
     close_series_5m: deque[float],
     vwap_5m: float,
+    coin: str = "",
 ) -> int:
     """
     Returns 0–3. Requires >= 2 to promote to watch list.
@@ -25,18 +30,36 @@ def gate3_score(
 
     score = 0
     current_price = prices[-1]
+    c1 = c2 = c3 = False
+    pct_from_high = None
 
     if len(prices) >= 240:
         high_4h = max(prices[-240:])
-        if high_4h > 0 and (high_4h - current_price) / high_4h < GATE3_PRICE_FROM_HIGH_MAX:
-            score += 1
+        if high_4h > 0:
+            pct_from_high = (high_4h - current_price) / high_4h
+            if pct_from_high < GATE3_PRICE_FROM_HIGH_MAX:
+                score += 1
+                c1 = True
 
     if vwap_5m > 0 and current_price < vwap_5m:
         score += 1
+        c2 = True
 
-    if failed_breakout_detected(high_series_5m, close_series_5m):
+    c3 = failed_breakout_detected(high_series_5m, close_series_5m)
+    if c3:
         score += 1
 
+    log.debug(
+        "gate3_eval",
+        coin=coin,
+        score=score,
+        c1_near_high=c1,
+        c2_below_vwap=c2,
+        c3_failed_breakout=c3,
+        pct_from_4h_high=round(pct_from_high * 100, 3) if pct_from_high is not None else None,
+        vwap=round(vwap_5m, 6),
+        current_price=round(current_price, 6),
+    )
     return score
 
 

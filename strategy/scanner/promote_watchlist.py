@@ -51,6 +51,7 @@ async def promote_to_watch_list(
             state["high_series_5m"],
             state["close_series_5m"],
             vwap_5m,
+            coin=coin,
         )
         if score >= 2:
             new_watch_list.append(coin)

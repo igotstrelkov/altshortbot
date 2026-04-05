@@ -70,6 +70,11 @@ def main() -> None:
     bootstrap_completes: list[dict] = []
     candidate_counts: list[int] = []
 
+    gate2_evals: list[dict] = []
+    gate3_evals: list[dict] = []
+    trigger_evals: list[dict] = []
+    trigger_primary_misses: list[dict] = []
+
     for e in events:
         ev = e.get("event", "")
         lvl = e.get("level", "")
@@ -94,6 +99,14 @@ def main() -> None:
             ws_starts.append(e)
         if ev == "trigger_fired":
             trigger_fires.append(e)
+        if ev == "gate2_eval":
+            gate2_evals.append(e)
+        if ev == "gate3_eval":
+            gate3_evals.append(e)
+        if ev == "trigger_eval":
+            trigger_evals.append(e)
+        if ev == "trigger_primary_miss":
+            trigger_primary_misses.append(e)
 
     # ── Report ────────────────────────────────────────────────────────────────
     sep = "─" * 60
@@ -169,6 +182,70 @@ def main() -> None:
     else:
         print("  No triggers fired yet")
     print()
+
+    # ── Gate 2 debug ──────────────────────────────────────────────────────────
+    if gate2_evals:
+        print("GATE 2 — OI DIVERGENCE (debug, last 10 passes)")
+        print(sep)
+        passed = [e for e in gate2_evals if e.get("passed")]
+        print(f"  Total evaluations : {len(gate2_evals)}")
+        print(f"  Passed            : {len(passed)}")
+        if passed:
+            for e in passed[-10:]:
+                print(f"  {e.get('coin','?'):<10}  OI_chg={e.get('oi_change_pct','?')}%  "
+                      f"px_chg={e.get('px_change_pct','?')}%")
+        # Top coins closest to passing
+        failed = [e for e in gate2_evals if not e.get("passed")]
+        if failed:
+            by_oi = sorted(failed, key=lambda x: x.get("oi_change_pct", 0), reverse=True)
+            print(f"\n  Top 5 closest to Gate 2 pass (highest OI change):")
+            for e in by_oi[:5]:
+                print(f"  {e.get('coin','?'):<10}  OI_chg={e.get('oi_change_pct','?')}%  "
+                      f"px_chg={e.get('px_change_pct','?')}%  "
+                      f"(need OI>{e.get('oi_threshold_pct','?')}%, px<{e.get('px_max_pct','?')}%)")
+        print()
+
+    # ── Gate 3 debug ──────────────────────────────────────────────────────────
+    if gate3_evals:
+        print("GATE 3 — PRICE STRUCTURE (debug)")
+        print(sep)
+        passed_g3 = [e for e in gate3_evals if e.get("score", 0) >= 2]
+        print(f"  Total evaluations : {len(gate3_evals)}")
+        print(f"  Passed (score>=2) : {len(passed_g3)}")
+        score_dist = Counter(e.get("score", 0) for e in gate3_evals)
+        print(f"  Score distribution: {dict(sorted(score_dist.items()))}")
+        if gate3_evals:
+            # Condition hit rates
+            c1 = sum(1 for e in gate3_evals if e.get("c1_near_high"))
+            c2 = sum(1 for e in gate3_evals if e.get("c2_below_vwap"))
+            c3 = sum(1 for e in gate3_evals if e.get("c3_failed_breakout"))
+            n = len(gate3_evals)
+            print(f"  C1 near 4h high   : {c1}/{n} ({100*c1//n}%)")
+            print(f"  C2 below VWAP     : {c2}/{n} ({100*c2//n}%)")
+            print(f"  C3 failed breakout: {c3}/{n} ({100*c3//n}%)")
+        print()
+
+    # ── Trigger debug ─────────────────────────────────────────────────────────
+    if trigger_evals or trigger_primary_misses:
+        print("TRIGGER ENGINE (debug)")
+        print(sep)
+        print(f"  Primary misses (delta_z >= -2.0) : {len(trigger_primary_misses)}")
+        print(f"  Primary fires evaluated          : {len(trigger_evals)}")
+        confirmed = [e for e in trigger_evals if e.get("confirmed")]
+        print(f"  Confirmed (at least 1 condition) : {len(confirmed)}")
+        if trigger_evals:
+            ca = sum(1 for e in trigger_evals if e.get("conf_a_bid_depth"))
+            cb = sum(1 for e in trigger_evals if e.get("conf_b_structure"))
+            cc = sum(1 for e in trigger_evals if e.get("conf_c_vwap"))
+            n = len(trigger_evals)
+            print(f"  Conf A bid depth  : {ca}/{n}")
+            print(f"  Conf B structure  : {cb}/{n}")
+            print(f"  Conf C vwap       : {cc}/{n}")
+        if trigger_primary_misses:
+            delta_zs = [e.get("delta_z", 0) for e in trigger_primary_misses]
+            print(f"  Delta-z range     : {min(delta_zs):.3f} to {max(delta_zs):.3f}  "
+                  f"(need < -2.0 to fire)")
+        print()
 
     # ── Errors ────────────────────────────────────────────────────────────────
     print("ERRORS")

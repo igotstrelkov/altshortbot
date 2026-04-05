@@ -3,10 +3,14 @@ from __future__ import annotations
 
 from collections import deque
 
+import structlog
+
 from shared.constants import GATE2_OI_CHANGE_THRESHOLD, GATE2_PRICE_CHANGE_MAX
 
+log = structlog.get_logger()
 
-def gate2_passes(oi_series: deque[float], price_series: deque[float]) -> bool:
+
+def gate2_passes(oi_series: deque[float], price_series: deque[float], coin: str = "") -> bool:
     """
     PASS if ALL of:
     - oi_series >= 245 entries, price_series >= 240 entries
@@ -29,4 +33,14 @@ def gate2_passes(oi_series: deque[float], price_series: deque[float]) -> bool:
         (list(price_series)[-1] - list(price_series)[-240]) / list(price_series)[-240]
     )
 
-    return oi_change > GATE2_OI_CHANGE_THRESHOLD and px_change < GATE2_PRICE_CHANGE_MAX
+    passed = oi_change > GATE2_OI_CHANGE_THRESHOLD and px_change < GATE2_PRICE_CHANGE_MAX
+    log.debug(
+        "gate2_eval",
+        coin=coin,
+        oi_change_pct=round(oi_change * 100, 3),
+        px_change_pct=round(px_change * 100, 3),
+        oi_threshold_pct=GATE2_OI_CHANGE_THRESHOLD * 100,
+        px_max_pct=GATE2_PRICE_CHANGE_MAX * 100,
+        passed=passed,
+    )
+    return passed

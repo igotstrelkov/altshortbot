@@ -165,7 +165,7 @@ async def run_one_cycle(
             continue
 
         trigger_price = current_mid  # snapshot at detection time
-        if not evaluate_trigger(state, trigger_price, current_mid):
+        if not evaluate_trigger(state, trigger_price, current_mid, coin=coin):
             continue
 
         # Compute stop distance

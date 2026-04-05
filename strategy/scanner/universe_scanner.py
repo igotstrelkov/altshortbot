@@ -39,7 +39,7 @@ async def run_universe_scanner(
 
         if not gate1_passes(state["funding_series"], state["premium_series"]):
             continue
-        if not gate2_passes(state["oi_series"], state["price_series"]):
+        if not gate2_passes(state["oi_series"], state["price_series"], coin=coin):
             continue
 
         gate12_candidates.append(coin)
