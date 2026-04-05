@@ -22,6 +22,7 @@ from risk.daily_loss_tracker import DailyLossTracker
 from risk.portfolio_controller import calculate_position_size, calculate_stop_distance
 from risk.watchdog import start_watchdog
 from shared.constants import (
+    FUNDING_REFRESH_INTERVAL_S,
     HIGH_VOL_1H_RANGE_PCT,
     REGIME_CANDLE_HISTORY_HOURS,
 )
@@ -40,6 +41,9 @@ _REGIME_REFRESH_INTERVAL_S = REGIME_CANDLE_HISTORY_HOURS * 60.0
 
 # ── Shutdown ──────────────────────────────────────────────────────────────────
 
+_shutdown_started = False
+
+
 def setup_signal_handlers(loop: asyncio.AbstractEventLoop, exchange: ExchangeAdapter) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(
@@ -49,6 +53,10 @@ def setup_signal_handlers(loop: asyncio.AbstractEventLoop, exchange: ExchangeAda
 
 
 async def shutdown(exchange: ExchangeAdapter) -> None:
+    global _shutdown_started
+    if _shutdown_started:
+        return
+    _shutdown_started = True
     log.info("shutdown_signal_received", msg="cancelling open orders")
     try:
         await exchange.cancel_all_orders()
@@ -58,6 +66,24 @@ async def shutdown(exchange: ExchangeAdapter) -> None:
     for task in tasks:
         task.cancel()
     log.info("shutdown_complete")
+
+
+# ── Funding refresh loop ──────────────────────────────────────────────────────
+
+async def funding_refresh_loop(
+    universe_coins: list[str],
+    all_states: dict[str, Any],
+) -> None:
+    """Re-bootstrap funding series for all coins every FUNDING_REFRESH_INTERVAL_S."""
+    await asyncio.sleep(FUNDING_REFRESH_INTERVAL_S)  # skip first cycle — bootstrap already ran
+    while True:
+        try:
+            log.info("funding_refresh_start", total=len(universe_coins))
+            await bootstrap_universe_funding(universe_coins, all_states)
+            log.info("funding_refresh_complete", total=len(universe_coins))
+        except Exception as exc:
+            log.error("funding_refresh_failed", error=str(exc))
+        await asyncio.sleep(FUNDING_REFRESH_INTERVAL_S)
 
 
 # ── Regime refresh loop ───────────────────────────────────────────────────────
@@ -87,7 +113,7 @@ async def run_one_cycle(
     cached_closes: dict[str, list[float]],
     open_positions: list[str],
     daily_loss_tracker: DailyLossTracker,
-    equity: float,
+    equity_ref: list[float],
     exchange: ExchangeAdapter,
     ws_tasks: dict[str, asyncio.Task],
 ) -> list[str]:
@@ -96,8 +122,26 @@ async def run_one_cycle(
 
     WS connections are opened only for Gate 1+2 candidates (warm-up + watchlist),
     not for the full universe. Hyperliquid allows 10 WS connections per IP.
+
+    equity_ref is a single-element list so equity can be updated in-place each cycle.
     """
     now = time.time()
+
+    # a0. Sync open_positions and equity from exchange each cycle
+    try:
+        user_state = await exchange.get_user_state()
+        new_equity = float(user_state["marginSummary"]["accountValue"])
+        if new_equity != equity_ref[0]:
+            log.info("equity_updated", prev_usd=round(equity_ref[0], 4), new_usd=round(new_equity, 4))
+            equity_ref[0] = new_equity
+        live_coins = [p["position"]["coin"] for p in user_state.get("assetPositions", [])
+                      if float(p["position"]["szi"]) != 0]
+        if live_coins != open_positions:
+            log.info("open_positions_synced", was=open_positions, now=live_coins)
+            open_positions.clear()
+            open_positions.extend(live_coins)
+    except Exception as exc:
+        log.warning("account_state_sync_failed", error=str(exc))
 
     # a. Kill switch
     if not daily_loss_tracker.is_trading_allowed():
@@ -186,7 +230,7 @@ async def run_one_cycle(
         stop_distance = calculate_stop_distance(current_mid, atr_14, swing_high, high_vol)
 
         size_usd = calculate_position_size(
-            equity, regime, state["squeeze_score"], stop_distance
+            equity_ref[0], regime, state["squeeze_score"], stop_distance
         )
         if size_usd == 0:
             continue
@@ -251,10 +295,10 @@ async def main() -> None:
         all_states[coin]["ws_command_queue"] = asyncio.Queue()
         all_states[coin]["sz_decimals"] = exchange.get_sz_decimals(coin)
 
-    # 6. Equity (cached — refreshed after each closed position in full impl)
+    # 6. Equity — stored as single-element list so run_one_cycle can update in-place
     user_state = await exchange.get_user_state()
-    equity = float(user_state["marginSummary"]["accountValue"])
-    log.info("equity_loaded", equity_usd=equity)
+    equity_ref: list[float] = [float(user_state["marginSummary"]["accountValue"])]
+    log.info("equity_loaded", equity_usd=equity_ref[0])
     log.info(
         "config_loaded",
         dry_run=settings.DRY_RUN,
@@ -266,7 +310,7 @@ async def main() -> None:
     )
 
     # 7. Daily loss tracker
-    daily_loss_tracker = DailyLossTracker(equity)
+    daily_loss_tracker = DailyLossTracker(equity_ref[0])
 
     # 8. Heartbeat monitor + watchdog OS thread
     start_watchdog(exchange.heartbeat_monitor, exchange)
@@ -294,6 +338,7 @@ async def main() -> None:
     exchange.heartbeat_monitor.beat()
     log.info("regime_closes_bootstrapped", coins=len(cached_closes))
     asyncio.create_task(regime_refresh_loop(universe_coins, cached_closes))
+    asyncio.create_task(funding_refresh_loop(universe_coins, all_states))
 
     # 13. Scanner loop
     current_watchlist: list[str] = []
@@ -310,7 +355,7 @@ async def main() -> None:
                 cached_closes=cached_closes,
                 open_positions=open_positions,
                 daily_loss_tracker=daily_loss_tracker,
-                equity=equity,
+                equity_ref=equity_ref,
                 exchange=exchange,
                 ws_tasks=ws_tasks,
             )

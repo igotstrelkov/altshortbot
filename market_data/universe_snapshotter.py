@@ -20,16 +20,26 @@ _HL_BASE = "https://api.hyperliquid.xyz"
 _OI_THROTTLE_S = 60
 _PREMIUM_THROTTLE_S = 300
 
+# Module-level session — reused across all rest_post calls to avoid per-call TCP overhead.
+# Lazily created on first use so it binds to the running event loop.
+_session: aiohttp.ClientSession | None = None
+
+
+def _get_session() -> aiohttp.ClientSession:
+    global _session
+    if _session is None or _session.closed:
+        _session = aiohttp.ClientSession()
+    return _session
+
 
 async def rest_post(path: str, payload: dict[str, Any]) -> Any:
     """POST to Hyperliquid API. Returns parsed JSON. Raises on non-200 or network error."""
     url = _HL_BASE + path
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=payload) as resp:
-            if resp.status != 200:
-                text = await resp.text()
-                raise RuntimeError(f"REST {path} returned {resp.status}: {text}")
-            return await resp.json()
+    async with _get_session().post(url, json=payload) as resp:
+        if resp.status != 200:
+            text = await resp.text()
+            raise RuntimeError(f"REST {path} returned {resp.status}: {text}")
+        return await resp.json()
 
 
 async def refresh_funding_from_rest(coin: str, state: dict[str, Any]) -> None:
