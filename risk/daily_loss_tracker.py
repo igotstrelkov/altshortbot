@@ -66,7 +66,17 @@ class DailyLossTracker:
     def _maybe_reset(self) -> None:
         today = datetime.utcnow().date()
         if today > self.reset_date:
+            prev_pnl = self.daily_pnl
+            prev_kill = self.kill_active
             self.daily_pnl = 0.0
             self.kill_active = False
             self.reset_date = today
+            log.info(
+                "daily_loss_reset",
+                date=str(today),
+                previous_daily_pnl_usd=round(prev_pnl, 4),
+                kill_was_active=prev_kill,
+                disable_still_active=self.disable_until is not None
+                    and datetime.utcnow() < self.disable_until,
+            )
             # disable_until intentionally NOT reset — 24h ban persists across midnight

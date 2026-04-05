@@ -7,6 +7,8 @@ from __future__ import annotations
 import asyncio
 import time
 
+import structlog
+
 from market_data.universe_snapshotter import rest_post
 from shared.constants import (
     ALT_BREADTH_DISABLE_THRESHOLD,
@@ -17,6 +19,8 @@ from shared.constants import (
     REGIME_MIN_BTC_HISTORY,
 )
 from shared.helpers import ema
+
+log = structlog.get_logger()
 
 
 async def refresh_1h_closes(universe_coins: list[str]) -> dict[str, list[float]]:
@@ -53,6 +57,8 @@ def regime_filter(
     btc_closes_1h: coin_closes_1h['BTC'] from refresh_1h_closes().
     """
     if len(btc_closes_1h) < REGIME_MIN_BTC_HISTORY:
+        log.info("regime_filter_result", result="DISABLED", reason="insufficient_btc_history",
+                 btc_closes=len(btc_closes_1h), required=REGIME_MIN_BTC_HISTORY)
         return "DISABLED"
 
     btc_ema_20 = ema(btc_closes_1h, 20)
@@ -60,8 +66,16 @@ def regime_filter(
     btc_slope = (btc_ema_20[-1] - btc_ema_20[-6]) / btc_ema_20[-6]
 
     if btc_ema_20[-1] > btc_ema_50[-1] and btc_slope > BTC_SLOPE_DISABLE_THRESHOLD:
+        log.info("regime_filter_result", result="DISABLED", reason="btc_uptrend_strong",
+                 btc_ema20=round(btc_ema_20[-1], 2), btc_ema50=round(btc_ema_50[-1], 2),
+                 btc_slope_pct=round(btc_slope * 100, 3),
+                 disable_threshold_pct=BTC_SLOPE_DISABLE_THRESHOLD * 100)
         return "DISABLED"
+
     if btc_ema_20[-1] > btc_ema_50[-1] and btc_slope > BTC_SLOPE_REDUCE_THRESHOLD:
+        log.info("regime_filter_result", result="REDUCED", reason="btc_uptrend_mild",
+                 btc_ema20=round(btc_ema_20[-1], 2), btc_ema50=round(btc_ema_50[-1], 2),
+                 btc_slope_pct=round(btc_slope * 100, 3))
         return "REDUCED"
 
     coins_up = sum(
@@ -72,7 +86,15 @@ def regime_filter(
         / coin_closes_1h[coin][-2]
         > ALT_BREADTH_UP_PCT
     )
-    if watch_list_coins and coins_up / len(watch_list_coins) > ALT_BREADTH_DISABLE_THRESHOLD:
+    alt_breadth_pct = (coins_up / len(watch_list_coins)) if watch_list_coins else 0.0
+    if watch_list_coins and alt_breadth_pct > ALT_BREADTH_DISABLE_THRESHOLD:
+        log.info("regime_filter_result", result="DISABLED", reason="alt_breadth",
+                 coins_up=coins_up, watch_list_size=len(watch_list_coins),
+                 breadth_pct=round(alt_breadth_pct * 100, 1),
+                 threshold_pct=ALT_BREADTH_DISABLE_THRESHOLD * 100)
         return "DISABLED"
 
+    log.info("regime_filter_result", result="NORMAL",
+             btc_ema20=round(btc_ema_20[-1], 2), btc_ema50=round(btc_ema_50[-1], 2),
+             btc_slope_pct=round(btc_slope * 100, 3))
     return "NORMAL"

@@ -37,7 +37,7 @@ async def run_universe_scanner(
             rest_premium = None
         ingest_asset_ctx(ctx, state, now, rest_premium=rest_premium)
 
-        if not gate1_passes(state["funding_series"], state["premium_series"]):
+        if not gate1_passes(state["funding_series"], state["premium_series"], coin=coin):
             continue
         if not gate2_passes(state["oi_series"], state["price_series"], coin=coin):
             continue

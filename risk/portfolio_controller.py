@@ -72,12 +72,30 @@ def calculate_position_size(
     risk_budget *= regime_multipliers.get(regime, 0.0)
 
     if squeeze_score >= SQUEEZE_HARD_BLOCK_SCORE:
+        log.info("position_size_calculated", action="HARD_BLOCK",
+                 squeeze_score=squeeze_score, threshold=SQUEEZE_HARD_BLOCK_SCORE,
+                 regime=regime, notional_usd=0.0)
         return 0.0
 
+    squeeze_reduced = False
     if squeeze_score >= SQUEEZE_REDUCE_SCORE:
         risk_budget *= SQUEEZE_REDUCE_MULTIPLIER
+        squeeze_reduced = True
 
-    return risk_budget / stop_distance_pct
+    notional = risk_budget / stop_distance_pct
+    log.info(
+        "position_size_calculated",
+        action="ALLOW",
+        account_equity=round(account_equity, 2),
+        regime=regime,
+        regime_multiplier=regime_multipliers.get(regime, 0.0),
+        squeeze_score=squeeze_score,
+        squeeze_reduced=squeeze_reduced,
+        stop_distance_pct=round(stop_distance_pct * 100, 3),
+        risk_budget_usd=round(risk_budget, 4),
+        notional_usd=round(notional, 2),
+    )
+    return notional
 
 
 def check_funding_exit(current_funding_rate: float, current_pnl_r: float) -> bool:

@@ -155,6 +155,7 @@ async def run_one_cycle(
         state = all_states[coin]
 
         if state["has_data_gap"]:
+            log.debug("data_gap_blocking_entry", coin=coin)
             continue
         price_series = state["price_series"]
         if not price_series:
@@ -193,7 +194,10 @@ async def run_one_cycle(
             continue
 
         if len(open_positions) >= settings.MAX_CONCURRENT_POSITIONS:
-            log.info("scanner_max_positions_reached")
+            log.info("scanner_max_positions_reached",
+                     open_positions=len(open_positions),
+                     max_allowed=settings.MAX_CONCURRENT_POSITIONS,
+                     rejected_coin=coin)
             break
 
         log.info(
@@ -201,7 +205,11 @@ async def run_one_cycle(
             coin=coin,
             mid=current_mid,
             regime=regime,
-            size_usd=size_usd,
+            squeeze_score=state["squeeze_score"],
+            stop_distance_pct=round(stop_distance * 100, 3),
+            atr_14=round(atr_14, 6),
+            high_vol=high_vol,
+            size_usd=round(size_usd, 4),
             dry_run=settings.DRY_RUN,
         )
 
@@ -246,6 +254,15 @@ async def main() -> None:
     user_state = await exchange.get_user_state()
     equity = float(user_state["marginSummary"]["accountValue"])
     log.info("equity_loaded", equity_usd=equity)
+    log.info(
+        "config_loaded",
+        dry_run=settings.DRY_RUN,
+        testnet=settings.HL_TESTNET,
+        max_concurrent_positions=settings.MAX_CONCURRENT_POSITIONS,
+        risk_per_trade_pct=settings.RISK_PER_TRADE_PCT,
+        daily_loss_kill_pct=settings.DAILY_LOSS_KILL_PCT,
+        daily_loss_disable_pct=settings.DAILY_LOSS_DISABLE_PCT,
+    )
 
     # 7. Daily loss tracker
     daily_loss_tracker = DailyLossTracker(equity)
