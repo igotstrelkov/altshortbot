@@ -287,6 +287,7 @@ async def main() -> None:
 
     # 12. Regime refresh cache + background task
     cached_closes: dict[str, list[float]] = {}
+    await asyncio.sleep(10)  # brief pause after funding bootstrap to avoid 429
     log.info("bootstrapping_regime_closes")
     exchange.heartbeat_monitor.beat()
     cached_closes.update(await refresh_1h_closes(universe_coins))
