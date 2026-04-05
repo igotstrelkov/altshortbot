@@ -284,6 +284,9 @@ async def main() -> None:
 
     # 12. Regime refresh cache + background task
     cached_closes: dict[str, list[float]] = {}
+    log.info("bootstrapping_regime_closes")
+    cached_closes.update(await refresh_1h_closes(universe_coins))
+    log.info("regime_closes_bootstrapped", coins=len(cached_closes))
     asyncio.create_task(regime_refresh_loop(universe_coins, cached_closes))
 
     # 13. Scanner loop
