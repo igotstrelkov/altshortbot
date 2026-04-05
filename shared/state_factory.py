@@ -65,4 +65,13 @@ def create_asset_state() -> dict[str, Any]:
         # Use the caller's external list as source of truth, not this flag.
         "is_on_watchlist":        False,
         "delta_ready":            False,
+
+        # ── Open position tracking ────────────────────────────────────
+        # Populated at fill time; cleared when position_state → None.
+        "entry_price":            None,   # avg fill price of open short entry
+        "position_size_coins":    None,   # filled size in coins (from fill totalSz)
+        "stop_distance_pct":      None,   # fractional stop distance used at entry
+        "sl_oid":                 None,   # stop loss trigger order OID
+        "tp1_oid":                None,   # take profit 1 trigger order OID
+        "tp2_oid":                None,   # take profit 2 trigger order OID
     }

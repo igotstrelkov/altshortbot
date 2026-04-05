@@ -17,6 +17,7 @@ from market_data.universe_snapshotter import bootstrap_universe_funding
 from market_data.ws_manager import run_ws_for_coin
 from oms.execution_adapter import ExchangeAdapter
 from oms.ioc_entry import execute_entry
+from oms.protection_manager import attach_protection
 from risk.correlation_filter import correlation_check_passes
 from risk.daily_loss_tracker import DailyLossTracker
 from risk.portfolio_controller import calculate_position_size, calculate_stop_distance
@@ -264,9 +265,29 @@ async def run_one_cycle(
         if not settings.DRY_RUN:
             result = await execute_entry(coin, size_usd, trigger_price, state, exchange)
             if result and result.status == "filled":
+                assert result.avg_px is not None
+                assert result.total_sz is not None
                 state["position_state"] = "open"
+                state["entry_price"] = result.avg_px
+                state["position_size_coins"] = result.total_sz
+                state["stop_distance_pct"] = stop_distance
                 open_positions.append(coin)
-                log.info("entry_filled", coin=coin, avg_px=result.avg_px)
+                log.info(
+                    "entry_filled",
+                    coin=coin,
+                    avg_px=result.avg_px,
+                    size_coins=result.total_sz,
+                    stop_pct=round(stop_distance * 100, 3),
+                )
+                await attach_protection(
+                    coin=coin,
+                    entry_price=result.avg_px,
+                    size_coins=result.total_sz,
+                    stop_distance_pct=stop_distance,
+                    sz_decimals=state["sz_decimals"],
+                    exchange=exchange,
+                    state=state,
+                )
 
     return new_watchlist
 

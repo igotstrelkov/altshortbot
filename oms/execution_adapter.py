@@ -175,6 +175,54 @@ class ExchangeAdapter:
         payload = self._sign_action(action)
         return await self._post("/exchange", payload)
 
+    async def place_trigger_order(
+        self,
+        coin: str,
+        side: str,
+        size_coins: float,
+        trigger_price_str: str,
+        limit_price_str: str,
+        is_market: bool,
+        tpsl: str,
+        reduce_only: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Place a reduce-only trigger order (stop loss or take profit).
+
+        trigger_price_str: price at which the trigger fires (pre-formatted string).
+        limit_price_str:   worst-acceptable limit price submitted when trigger fires.
+                           For a buy SL: set above trigger (5% buffer typical).
+                           For a buy TP: set slightly above trigger (1% buffer).
+        is_market:         True = IOC at limit_price_str when triggered.
+        tpsl:              "sl" for stop loss, "tp" for take profit.
+        reduce_only:       True — never increase position.
+        """
+        asset_idx   = self.get_asset_index(coin)
+        sz_decimals = self.get_sz_decimals(coin)
+
+        action: dict[str, Any] = {
+            "type": "order",
+            "orders": [
+                {
+                    "a": asset_idx,
+                    "b": side == "buy",
+                    "p": limit_price_str,
+                    "s": str(round(size_coins, sz_decimals)),
+                    "r": reduce_only,
+                    "t": {
+                        "trigger": {
+                            "triggerPx": trigger_price_str,
+                            "isMarket": is_market,
+                            "tpsl": tpsl,
+                        }
+                    },
+                }
+            ],
+            "grouping": "na",
+        }
+        payload = self._sign_action(action)
+        return await self._post("/exchange", payload)
+
     async def cancel_all_orders(self) -> None:
         """Cancel all resting orders. Called on clean shutdown."""
         open_orders: list[dict[str, Any]] = await rest_post(
