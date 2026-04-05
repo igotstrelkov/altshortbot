@@ -43,7 +43,9 @@ async def refresh_1h_closes(universe_coins: list[str]) -> dict[str, list[float]]
             candles = await rest_post("/info", payload)
             if candles:
                 coin_closes[coin] = [float(c["c"]) for c in candles]
-        except RuntimeError as exc:
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
             if "429" in str(exc):
                 log.warning("regime_candle_rate_limited", coin=coin)
                 await asyncio.sleep(2)

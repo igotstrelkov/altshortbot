@@ -73,7 +73,9 @@ async def bootstrap_universe_funding(
             try:
                 await refresh_funding_from_rest(coin, all_states[coin])
                 break
-            except RuntimeError as exc:
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
                 if "429" in str(exc):
                     wait = 5 * (attempt + 1)
                     log.warning("funding_bootstrap_rate_limited", coin=coin, retry_in_s=wait)

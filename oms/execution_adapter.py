@@ -7,6 +7,7 @@ EIP-712 signing uses hyperliquid-python-sdk utilities + eth_account.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import aiohttp
@@ -73,16 +74,25 @@ class ExchangeAdapter:
         """
         Fetch universe metadata and cache asset_index + sz_decimals per coin.
         Must be called once at startup before any orders or subscriptions.
+        Retries with backoff on 429 or transient network errors.
         """
-        response = await rest_post("/info", {"type": "meta"})
-        self.coin_meta = {
-            asset["name"]: {
-                "asset_index": i,
-                "sz_decimals": asset["szDecimals"],
-            }
-            for i, asset in enumerate(response["universe"])
-        }
-        log.info("coin_meta_built", num_coins=len(self.coin_meta))
+        for attempt in range(10):
+            try:
+                response = await rest_post("/info", {"type": "meta"})
+                self.coin_meta = {
+                    asset["name"]: {
+                        "asset_index": i,
+                        "sz_decimals": asset["szDecimals"],
+                    }
+                    for i, asset in enumerate(response["universe"])
+                }
+                log.info("coin_meta_built", num_coins=len(self.coin_meta))
+                return
+            except Exception as exc:
+                wait = min(5 * (attempt + 1), 60)
+                log.warning("coin_meta_retry", attempt=attempt + 1, error=str(exc), retry_in_s=wait)
+                await asyncio.sleep(wait)
+        raise RuntimeError("build_coin_meta failed after 10 attempts")
 
     def get_sz_decimals(self, coin: str) -> int:
         return int(self.coin_meta[coin]["sz_decimals"])

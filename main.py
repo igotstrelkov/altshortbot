@@ -136,7 +136,7 @@ async def run_one_cycle(
             equity_ref[0] = new_equity
         live_coins = [p["position"]["coin"] for p in user_state.get("assetPositions", [])
                       if float(p["position"]["szi"]) != 0]
-        if live_coins != open_positions:
+        if set(live_coins) != set(open_positions):
             log.info("open_positions_synced", was=open_positions, now=live_coins)
             open_positions.clear()
             open_positions.extend(live_coins)
@@ -220,6 +220,9 @@ async def run_one_cycle(
             state["low_series_5m"],
             state["close_series_5m"],
         )
+        if atr_14 == 0:
+            log.debug("atr_unavailable_skip", coin=coin)
+            continue
         prices = list(price_series)
         swing_high = max(prices[-15:]) if len(prices) >= 15 else current_mid
         prices_60 = prices[-60:] if len(prices) >= 60 else prices
