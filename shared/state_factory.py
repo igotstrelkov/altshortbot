@@ -23,6 +23,7 @@ def create_asset_state() -> dict[str, Any]:
         "high_series_5m":         deque(maxlen=24),     # 2h of 5m highs
         "low_series_5m":          deque(maxlen=24),     # 2h of 5m lows — needed for ATR
         "close_series_5m":        deque(maxlen=24),     # 2h of 5m closes
+        "last_candle_ts_5m":      0,                    # open-time ms of last appended candle
 
         # ── Trigger state ─────────────────────────────────────────────
         "delta_history":          deque(maxlen=10),     # last 10 × 60s delta values

@@ -45,8 +45,11 @@ def handle_message(message: dict[str, Any], state: dict[str, Any]) -> None:
 
     elif channel == "candle":
         c = message["data"]
-        state["high_series_5m"].append(float(c["h"]))
-        state["low_series_5m"].append(float(c["l"]))
-        state["close_series_5m"].append(float(c["c"]))
+        candle_ts = int(c["t"])
+        if candle_ts != state.get("last_candle_ts_5m", 0):
+            state["last_candle_ts_5m"] = candle_ts
+            state["high_series_5m"].append(float(c["h"]))
+            state["low_series_5m"].append(float(c["l"]))
+            state["close_series_5m"].append(float(c["c"]))
 
     # "pong" and unknown channels are silently ignored

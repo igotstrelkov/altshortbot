@@ -28,6 +28,8 @@ def gate2_passes(oi_series: deque[float], price_series: deque[float], coin: str 
 
     oi_now = sum(oi_now_window) / 5
     oi_4h = sum(oi_4h_window) / 5
+    if oi_4h == 0:
+        return False
     oi_change = (oi_now - oi_4h) / oi_4h
     px_change = abs(
         (list(price_series)[-1] - list(price_series)[-240]) / list(price_series)[-240]

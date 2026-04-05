@@ -69,6 +69,9 @@ def reset_warmup_state(coin: str, state: dict[str, Any]) -> None:
     state["ws_subscribed_at"] = 0.0
     state["is_on_watchlist"] = False
     state["delta_ready"] = False
+    state["bid_depth_now"] = 0.0
+    state["bid_depth_t_minus_30s"] = 0.0
+    state["last_candle_ts_5m"] = 0
 
     for series_key in ("price_series", "high_series_5m", "low_series_5m", "close_series_5m"):
         state[series_key].clear()
