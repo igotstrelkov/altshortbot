@@ -59,7 +59,18 @@ async def bootstrap_universe_funding(
     total = len(universe_coins)
     log.info("funding_bootstrap_start", total=total)
     for i, coin in enumerate(universe_coins):
-        await refresh_funding_from_rest(coin, all_states[coin])
+        for attempt in range(3):
+            try:
+                await refresh_funding_from_rest(coin, all_states[coin])
+                break
+            except RuntimeError as exc:
+                if "429" in str(exc):
+                    wait = 5 * (attempt + 1)
+                    log.warning("funding_bootstrap_rate_limited", coin=coin, retry_in_s=wait)
+                    await asyncio.sleep(wait)
+                else:
+                    log.warning("funding_bootstrap_coin_failed", coin=coin, error=str(exc))
+                    break
         log.info("funding_bootstrap_progress", progress=f"{i+1}/{total}", coin=coin)
         if i < total - 1:
             await asyncio.sleep(FUNDING_BOOTSTRAP_STAGGER_S)
