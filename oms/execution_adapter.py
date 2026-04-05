@@ -8,6 +8,7 @@ EIP-712 signing uses hyperliquid-python-sdk utilities + eth_account.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 import aiohttp
@@ -20,6 +21,7 @@ from hyperliquid.utils.signing import get_timestamp_ms, sign_l1_action  # type: 
 from market_data.universe_snapshotter import rest_post
 from oms.nonce_manager import NonceManager
 from risk.watchdog import HeartbeatMonitor
+from shared.constants import SCHEDULE_CANCEL_WINDOW_S
 
 log = structlog.get_logger()
 
@@ -222,6 +224,27 @@ class ExchangeAdapter:
         }
         payload = self._sign_action(action)
         return await self._post("/exchange", payload)
+
+    async def schedule_cancel(self) -> None:
+        """
+        Refresh the exchange-native dead-man switch.
+
+        Sets cancel_at = now + SCHEDULE_CANCEL_WINDOW_S (60 min). If this method
+        is not called again before that time, the exchange will cancel all open orders.
+        Call every SCHEDULE_CANCEL_REFRESH_S (30 min) to keep the window rolling.
+
+        Note: scheduleCancel cancels orders only — it does not flatten open positions.
+        The application-level watchdog (risk/watchdog.py) handles position flattening.
+        """
+        cancel_at_ms = int((time.time() + SCHEDULE_CANCEL_WINDOW_S) * 1000)
+        action: dict[str, Any] = {
+            "type": "scheduleCancel",
+            "time": cancel_at_ms,
+        }
+        payload = self._sign_action(action)
+        result = await self._post("/exchange", payload)
+        log.info("schedule_cancel_refreshed", cancel_at_ms=cancel_at_ms)
+        return result  # type: ignore[return-value]
 
     async def cancel_all_orders(self) -> None:
         """Cancel all resting orders. Called on clean shutdown."""

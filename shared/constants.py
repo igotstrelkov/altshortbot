@@ -98,3 +98,10 @@ WS_PING_INTERVAL_S              = 45         # send ping before 60s server close
 # ── Process health ────────────────────────────────────────────────
 HEARTBEAT_TIMEOUT_S             = 300        # 5 min without beat → emergency flatten
 HEARTBEAT_BEAT_INTERVAL_S       = 30
+
+# ── Exchange dead-man switch ──────────────────────────────────────
+# scheduleCancel fires cancel_at = now + SCHEDULE_CANCEL_WINDOW_S.
+# Refreshed every SCHEDULE_CANCEL_REFRESH_S. If bot dies, orders are
+# cancelled within SCHEDULE_CANCEL_WINDOW_S of the last successful refresh.
+SCHEDULE_CANCEL_REFRESH_S       = 1800       # refresh every 30 min
+SCHEDULE_CANCEL_WINDOW_S        = 3600       # cancel_at = now + 60 min

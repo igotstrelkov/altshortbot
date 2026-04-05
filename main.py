@@ -26,6 +26,7 @@ from shared.constants import (
     FUNDING_REFRESH_INTERVAL_S,
     HIGH_VOL_1H_RANGE_PCT,
     REGIME_CANDLE_HISTORY_HOURS,
+    SCHEDULE_CANCEL_REFRESH_S,
 )
 from shared.helpers import compute_atr
 from shared.state_factory import create_asset_state
@@ -88,6 +89,16 @@ async def funding_refresh_loop(
 
 
 # ── Regime refresh loop ───────────────────────────────────────────────────────
+
+async def schedule_cancel_loop(exchange: ExchangeAdapter) -> None:
+    """Refresh scheduleCancel every SCHEDULE_CANCEL_REFRESH_S seconds."""
+    while True:
+        await asyncio.sleep(SCHEDULE_CANCEL_REFRESH_S)
+        try:
+            await exchange.schedule_cancel()
+        except Exception as exc:
+            log.error("schedule_cancel_refresh_failed", error=str(exc))
+
 
 async def regime_refresh_loop(
     universe_coins: list[str],
@@ -364,7 +375,14 @@ async def main() -> None:
     asyncio.create_task(regime_refresh_loop(universe_coins, cached_closes))
     asyncio.create_task(funding_refresh_loop(universe_coins, all_states))
 
-    # 13. Scanner loop
+    # 13. scheduleCancel — initial set + background refresh every 30 min
+    try:
+        await exchange.schedule_cancel()
+    except Exception as exc:
+        log.error("schedule_cancel_initial_failed", error=str(exc))
+    asyncio.create_task(schedule_cancel_loop(exchange))
+
+    # 14. Scanner loop
     current_watchlist: list[str] = []
     open_positions: list[str] = []
 
