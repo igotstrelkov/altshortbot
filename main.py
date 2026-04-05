@@ -100,6 +100,71 @@ async def schedule_cancel_loop(exchange: ExchangeAdapter) -> None:
             log.error("schedule_cancel_refresh_failed", error=str(exc))
 
 
+async def _handle_position_closed(
+    coin: str,
+    state: dict[str, Any],
+    exchange: ExchangeAdapter,
+    daily_loss_tracker: DailyLossTracker,
+) -> None:
+    """
+    Called once when a position disappears from exchange assetPositions.
+
+    Retrieves realized P&L from fills since the entry fill timestamp.
+    Falls back to a mark-price estimate when the fills query fails or returns
+    nothing for this coin (e.g. position pre-dates our tracking window).
+
+    'closedPnl' in Hyperliquid fills is zero for opening fills, non-zero for
+    closing fills — summing all fills for the coin since entry_ts is safe.
+
+    Clears all position tracking fields in state after recording.
+    """
+    entry_price = state.get("entry_price")
+    size_coins  = state.get("position_size_coins")
+    opened_at   = state.get("position_opened_at") or 0.0
+
+    pnl_usd    = 0.0
+    fills_found = False
+    pnl_source  = "unknown"
+
+    # Primary: fills since entry — accurate closedPnl per fill from exchange
+    if opened_at > 0:
+        try:
+            fills = await exchange.get_recent_fills(since_ms=int(opened_at * 1000))
+            for fill in fills:
+                if fill.get("coin") == coin:
+                    pnl_usd    += float(fill.get("closedPnl") or 0)
+                    fills_found = True
+            pnl_source = "fills" if fills_found else "no_fills"
+        except Exception as exc:
+            log.warning("position_close_fills_failed", coin=coin, error=str(exc))
+            pnl_source = "fills_error"
+
+    # Fallback: mark-price estimate when fills unavailable or empty
+    if not fills_found and entry_price and size_coins:
+        price_series = state.get("price_series")
+        if price_series:
+            exit_px = float(list(price_series)[-1])
+            pnl_usd    = (entry_price - exit_px) * size_coins   # short: profit when price fell
+            pnl_source = "price_estimate"
+
+    result = daily_loss_tracker.record_close(pnl_usd)
+    log.info(
+        "position_closed",
+        coin=coin,
+        pnl_usd=round(pnl_usd, 4),
+        pnl_source=pnl_source,
+        daily_tracker_result=result,
+        daily_pnl_usd=round(daily_loss_tracker.daily_pnl, 4),
+    )
+
+    # Clear position tracking fields
+    state["position_state"]      = None
+    state["entry_price"]         = None
+    state["position_size_coins"] = None
+    state["stop_distance_pct"]   = None
+    state["position_opened_at"]  = 0.0
+
+
 async def regime_refresh_loop(
     universe_coins: list[str],
     cached_closes: dict[str, list[float]],
@@ -146,12 +211,21 @@ async def run_one_cycle(
         if new_equity != equity_ref[0]:
             log.info("equity_updated", prev_usd=round(equity_ref[0], 4), new_usd=round(new_equity, 4))
             equity_ref[0] = new_equity
-        live_coins = [p["position"]["coin"] for p in user_state.get("assetPositions", [])
-                      if float(p["position"]["szi"]) != 0]
-        if set(live_coins) != set(open_positions):
-            log.info("open_positions_synced", was=open_positions, now=live_coins)
+        live_set = {
+            p["position"]["coin"]
+            for p in user_state.get("assetPositions", [])
+            if float(p["position"]["szi"]) != 0
+        }
+        # Detect each position that closed since the last cycle
+        for coin in list(open_positions):
+            if coin not in live_set:
+                await _handle_position_closed(
+                    coin, all_states[coin], exchange, daily_loss_tracker
+                )
+        if live_set != set(open_positions):
+            log.info("open_positions_synced", was=list(open_positions), now=list(live_set))
             open_positions.clear()
-            open_positions.extend(live_coins)
+            open_positions.extend(live_set)
     except Exception as exc:
         log.warning("account_state_sync_failed", error=str(exc))
 
@@ -282,6 +356,7 @@ async def run_one_cycle(
                 state["entry_price"] = result.avg_px
                 state["position_size_coins"] = result.total_sz
                 state["stop_distance_pct"] = stop_distance
+                state["position_opened_at"] = time.time()
                 open_positions.append(coin)
                 log.info(
                     "entry_filled",

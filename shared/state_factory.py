@@ -71,6 +71,7 @@ def create_asset_state() -> dict[str, Any]:
         "entry_price":            None,   # avg fill price of open short entry
         "position_size_coins":    None,   # filled size in coins (from fill totalSz)
         "stop_distance_pct":      None,   # fractional stop distance used at entry
+        "position_opened_at":     0.0,    # unix ts of entry fill — used to bound fills query
         "sl_oid":                 None,   # stop loss trigger order OID
         "tp1_oid":                None,   # take profit 1 trigger order OID
         "tp2_oid":                None,   # take profit 2 trigger order OID

@@ -297,6 +297,21 @@ class ExchangeAdapter:
             if float(p["position"]["szi"]) != 0
         ]
 
+    async def get_recent_fills(self, since_ms: int) -> list[dict[str, Any]]:
+        """
+        Fetch all fills for this account since since_ms (unix milliseconds).
+
+        Each fill dict includes 'coin', 'closedPnl', 'dir', 'px', 'sz', etc.
+        'closedPnl' is the realised P&L for closing fills; "0" for opening fills.
+
+        Returns [] if the response is not a list (handles API shape changes gracefully).
+        """
+        result = await rest_post(
+            "/info",
+            {"type": "userFills", "user": self._wallet_address, "startTime": since_ms},
+        )
+        return result if isinstance(result, list) else []
+
     async def close(self) -> None:
         if self._session is not None:
             await self._session.close()
