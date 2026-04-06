@@ -69,6 +69,8 @@ def main() -> None:
     bootstrap_completes: list[dict] = []
     candidate_counts: list[int] = []
 
+    gate1_skips: list[dict] = []
+    gate2_skips: list[dict] = []
     gate1_evals: list[dict] = []
     gate2_evals: list[dict] = []
     gate3_evals: list[dict] = []
@@ -139,6 +141,10 @@ def main() -> None:
             ws_starts.append(e)
         if ev == "trigger_fired":
             trigger_fires.append(e)
+        if ev == "gate1_skip":
+            gate1_skips.append(e)
+        if ev == "gate2_skip":
+            gate2_skips.append(e)
         if ev == "gate1_eval":
             gate1_evals.append(e)
         if ev == "gate2_eval":
@@ -292,6 +298,9 @@ def main() -> None:
     # ── Gate 1 ────────────────────────────────────────────────────────────────
     print("GATE 1 — FUNDING PRESSURE")
     print(sep)
+    if gate1_skips:
+        skip_reasons = Counter(e.get("reason", "?") for e in gate1_skips)
+        print(f"  Skipped (no eval): {len(gate1_skips)}  reasons: {dict(skip_reasons)}")
     if gate1_evals:
         g1_passed = [e for e in gate1_evals if e.get("passed")]
         g1_failed = [e for e in gate1_evals if not e.get("passed")]
@@ -473,9 +482,12 @@ def main() -> None:
     print()
 
     # ── Gate 2 debug ──────────────────────────────────────────────────────────
-    if gate2_evals:
+    if gate2_evals or gate2_skips:
         print("GATE 2 — OI DIVERGENCE (debug, last 10 passes)")
         print(sep)
+        if gate2_skips:
+            skip_reasons = Counter(e.get("reason", "?") for e in gate2_skips)
+            print(f"  Skipped (no eval): {len(gate2_skips)}  reasons: {dict(skip_reasons)}")
         passed = [e for e in gate2_evals if e.get("passed")]
         print(f"  Total evaluations : {len(gate2_evals)}")
         print(f"  Passed            : {len(passed)}")

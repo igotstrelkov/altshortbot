@@ -31,30 +31,22 @@ altshortbot-live       # scripts/live_trade.py:main
 
 ## Implementation Status
 
-Only `shared/` exists. Everything else is greenfield:
+All packages are complete. The bot is fully implemented and running in paper trade.
 
 | Package | Status |
 |---|---|
-| `shared/constants.py`, `types.py`, `state_factory.py` | ✅ Complete |
-| `shared/helpers.py` | ✅ Complete |
-| `strategy/trigger/vwap_buffer.py`, `delta_aggregator.py` | ✅ Complete |
+| `shared/` (constants, types, state_factory, helpers, logging_config) | ✅ Complete |
+| `strategy/trigger/` (vwap_buffer, delta_aggregator, trigger_engine) | ✅ Complete |
 | `strategy/liq_model.py` | ✅ Complete |
-| `market_data/universe_snapshotter.py` | ✅ Complete |
-| `shared/logging_config.py` | ✅ Complete |
 | `strategy/scanner/` (gate1, gate2, gate3, seed_rest, universe_scanner, promote_watchlist) | ✅ Complete |
 | `strategy/regime_filter.py` | ✅ Complete |
-| `strategy/trigger/trigger_engine.py` | ✅ Complete |
-| `market_data/tiered_streamer.py` | ✅ Complete |
-| `market_data/state_normaliser.py` | ✅ Complete |
-| `oms/price_formatter.py`, `order_parser.py`, `ioc_entry.py`, `execution_adapter.py` | ✅ Complete |
-| `risk/daily_loss_tracker.py`, `correlation_filter.py`, `watchdog.py`, `portfolio_controller.py` | ✅ Complete |
-| `oms/execution_adapter.py` (ExchangeAdapter + stub) | ✅ Complete |
-| `market_data/ws_manager.py` | ✅ Complete |
-| `main.py`, `config/settings.py`, `scripts/paper_trade.py`, `scripts/live_trade.py` | ✅ Complete |
-| `scripts/` | ❌ Not yet created |
-| `tests/unit/` | ✅ Exists (test_helpers.py, test_vwap_delta.py, test_liq_model.py, test_ingestion.py, test_gates.py, test_regime.py, test_trigger.py, test_execution.py) |
+| `market_data/` (universe_snapshotter, tiered_streamer, state_normaliser, ws_manager, all_mids_ws, user_ws) | ✅ Complete |
+| `oms/` (price_formatter, order_parser, ioc_entry, execution_adapter, protection_manager) | ✅ Complete |
+| `risk/` (daily_loss_tracker, correlation_filter, watchdog, portfolio_controller) | ✅ Complete |
+| `main.py`, `config/settings.py` | ✅ Complete |
+| `scripts/` (bootstrap, paper_trade, live_trade, analyze_logs, debug_gates, smoke_test) | ✅ Complete |
+| `tests/unit/` (test_helpers, test_vwap_delta, test_liq_model, test_ingestion, test_gates, test_regime, test_trigger, test_execution) | ✅ Complete |
 
-All three helper objects (`VwapBuffer`, `DeltaAggregator`, `LiquidationModel`) are now wired into `state_factory.py` as real instances.
 The authoritative specification is `AltShortBot_PRD_v3.md`. Section 15 is the LLM implementation guide.
 
 ## Architecture
@@ -104,7 +96,7 @@ All mutable state for a coin lives in the dict returned by `shared/state_factory
 - `constants.py` — every numeric threshold; import from here, never hardcode inline
 - `types.py` — all type definitions (`TradeIntent`, `ParsedOrderStatus`, `Regime`, etc.)
 - `state_factory.py` — `create_asset_state()` factory
-- `helpers.py` — to be implemented: `ema()`, `compute_vwap()`, `compute_atr()`, `format_price()`
+- `helpers.py` — `ema()`, `compute_vwap()`, `compute_atr()`, `format_price()`
 
 ### Strategy pipeline
 
@@ -137,37 +129,99 @@ Squeeze score from `LiquidationModel` can block (score ≥5) or size-reduce (sco
 - Price formatting: ≤5 significant figures, respects Hyperliquid tick/lot rules
 - Exchange limits: 10 WS connections per IP, 1,000 subscriptions, 2,000 messages/min
 
+### Data ingestion rules (PRD Section 2.6) — violations are silent and live-critical
+
+**Rule 1 — Type coercion**: Always wrap REST/WS numeric fields in `float()` or `int()` at the ingestion boundary. Exchange responses mix strings and numbers inconsistently.
+
+**Rule 2 — Funding division**: The exchange `fundingRate` field is an 8-hour basis rate. Divide by 8 before appending to `funding_series`. Gate 1 APR annualises from the per-hour value.
+
+**Rule 3 — Two separate ingestion paths; never mix them**:
+- **Path A** (funding): REST only via `refresh_funding_from_rest()`. Never write to `funding_series` from a WS message.
+- **Path B** (OI / price / premium): `ingest_asset_ctx()`, throttled at 60s for OI+price, 300s for premium.
+
+**Premium field sourcing**:
+- `metaAndAssetCtxs` REST: use `float(ctx["premium"])` directly.
+- `activeAssetCtx` WS: field absent — derive as `(markPx - oraclePx) / oraclePx`.
+
+### Trigger expiry (PRD Section 7.3)
+
+A trigger is invalid (skip entry, do not fallback) if either condition holds:
+- Price has drifted > 1.5% from `trigger_price` (`TRIGGER_STALE_DRIFT_MAX`)
+- Delta z-score has recovered to ≥ −1.5 (`DELTA_ZSCORE_EXPIRY`)
+
+Check before primary IOC **and** again before fallback IOC.
+
+### IOC rejection handling (PRD Section 8.3)
+
+Each rejection reason requires different handling — do not treat all equally:
+
+| reason | action |
+|---|---|
+| `iocCancelRejected` | benign — proceed to fallback |
+| `minTradeNtlRejected` | fatal — abort signal (sizing bug) |
+| `tickRejected` | fatal — abort signal (price formatting bug) |
+| `oracleRejected` | fatal — skip signal (price too far from oracle) |
+| anything else | log warning — fallback may still work |
+
+### WS connection rules (PRD Section 14)
+
+- **Ping interval**: send every 45s. The server closes connections silent after 60s with no activity.
+- **On promotion** from warm-up → active watch list: add `l2Book` subscription only. Do NOT re-subscribe warm-up feeds (trades, candle, activeAssetCtx) — duplicate subscriptions count against the 1,000-subscription limit.
+- **On demotion**: unsubscribe ALL feeds for the coin.
+- **On reconnect**: set `has_data_gap = True` immediately → resubscribe → refresh funding → set `has_data_gap = False`. Also reset `delta_ready = False` so the trigger engine rebuilds its 10-window baseline before firing.
+
+### Ambiguity resolution (PRD Section 15.2)
+
+When the PRD is ambiguous, apply in order:
+1. Safety > accuracy — if unsure whether to enter, do not.
+2. Use most conservative threshold for entry gates.
+3. Use most generous threshold for exit and stop rules.
+4. If `has_data_gap is True`, skip all entry decisions.
+5. Never infer missing data — raise or skip.
+6. When in doubt about data type, always `float()` before arithmetic.
+
 ## Runtime Configuration
 
-Copy `.env.example` to `.env`. Required variables:
+Copy `.env.example` to `.env`. Variables:
 
 ```
-HL_API_WALLET_ADDRESS, HL_PRIVATE_KEY, HL_TESTNET
-ACCOUNT_EQUITY_USD, MAX_CONCURRENT_POSITIONS
-RISK_PER_TRADE_PCT, DAILY_LOSS_KILL_PCT, DAILY_LOSS_DISABLE_PCT
-LOG_LEVEL, LOG_DIR
+# Required
+HL_API_WALLET_ADDRESS, HL_PRIVATE_KEY
+HL_TESTNET          # true | false (default false)
+
+# Risk
+ACCOUNT_EQUITY_USD           # default 10000
+MAX_CONCURRENT_POSITIONS     # default 3
+RISK_PER_TRADE_PCT           # default 0.01
+DAILY_LOSS_KILL_PCT          # default 0.03
+DAILY_LOSS_DISABLE_PCT       # default 0.05
+
+# Safety
+DRY_RUN             # default true — logs triggers but places NO orders.
+                    # Only set false after 48-72h dry run confirms signal frequency.
+
+# Operational
+LOG_LEVEL           # default INFO (set DEBUG for per-coin gate detail)
+LOG_DIR             # default logs/
 ```
 
-## Implementation Order
+## Scripts
 
-Follow PRD Section 15.1 exactly:
+```bash
+# Verify exchange signing + order parsing (no real orders placed)
+python scripts/smoke_test.py
 
-```
-shared/helpers.py
-strategy/trigger/vwap_buffer.py
-strategy/trigger/delta_aggregator.py
-strategy/liq_model.py
-market_data/universe_snapshotter.py
-strategy/scanner/gate1.py, gate2.py, gate3.py, seed_rest.py
-strategy/scanner/universe_scanner.py + promote_watchlist.py
-strategy/regime_filter.py
-market_data/tiered_streamer.py
-...
+# Debug Gate 1 for a specific coin and date range
+python scripts/debug_gates.py --coin WIF --start 2024-03-01 --end 2024-06-01
+
+# Analyse pm2 logs from stdin or file
+pm2 logs altshortbot --lines 10000 --nocolor | python scripts/analyze_logs.py
+python scripts/analyze_logs.py logs/paper_trade.log
 ```
 
 ## Development Phases
 
-- **Phase 1:** Backtest gates only — `scripts/bootstrap.py`
-- **Phase 2:** Paper trade — `scripts/paper_trade.py`
+- **Phase 1:** Backtest gates only — `scripts/bootstrap.py` ✅
+- **Phase 2:** Paper trade — `scripts/paper_trade.py` ✅ (current)
 - **Phase 3:** Small live (max 3 positions) — `scripts/live_trade.py`
 - **Phase 4:** Scale

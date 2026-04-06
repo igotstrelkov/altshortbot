@@ -27,6 +27,7 @@ def gate1_passes(
     """
     recent_8h = list(funding_series)[-8:]
     if len(recent_8h) < 8:
+        log.debug("gate1_skip", coin=coin, reason="insufficient_data", have=len(recent_8h), need=8)
         return False
 
     annualised = recent_8h[-1] * GATE1_ANNUALISE_MULTIPLIER
