@@ -14,6 +14,7 @@ import structlog
 
 import config.settings as settings
 from market_data.universe_snapshotter import bootstrap_universe_funding
+from market_data.user_ws import run_user_ws
 from market_data.ws_manager import run_ws_for_coin
 from oms.execution_adapter import ExchangeAdapter
 from oms.ioc_entry import execute_entry
@@ -118,6 +119,11 @@ async def _handle_position_closed(
 
     Clears all position tracking fields in state after recording.
     """
+    # Guard: user_ws.py may have handled this close already via a real-time fill event.
+    # If so, position_state is already None and the coin is gone from open_positions.
+    if state.get("position_state") != "open":
+        return
+
     entry_price = state.get("entry_price")
     size_coins  = state.get("position_size_coins")
     opened_at   = state.get("position_opened_at") or 0.0
@@ -457,10 +463,19 @@ async def main() -> None:
         log.error("schedule_cancel_initial_failed", error=str(exc))
     asyncio.create_task(schedule_cancel_loop(exchange))
 
-    # 14. Scanner loop
+    # 14. User WS — account-level fills feed (real-time position close detection)
     current_watchlist: list[str] = []
     open_positions: list[str] = []
+    asyncio.create_task(
+        run_user_ws(
+            wallet_address=settings.HL_API_WALLET_ADDRESS,
+            all_states=all_states,
+            open_positions=open_positions,
+            daily_loss_tracker=daily_loss_tracker,
+        )
+    )
 
+    # 15. Scanner loop
     while True:
         loop_start = time.time()
         exchange.heartbeat_monitor.beat()
