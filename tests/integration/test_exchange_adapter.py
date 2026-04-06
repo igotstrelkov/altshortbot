@@ -13,7 +13,6 @@ import os
 import pytest
 
 from oms.execution_adapter import ExchangeAdapter
-from oms.nonce_manager import NonceManager
 
 
 @pytest.fixture()
@@ -63,16 +62,3 @@ async def test_get_open_positions_parses_correctly(adapter: ExchangeAdapter) -> 
     await adapter.close()
 
 
-@pytest.mark.skip(reason="requires live testnet credentials")
-async def test_nonce_increments_across_calls(adapter: ExchangeAdapter) -> None:
-    """
-    Verifies that successive next_nonce() calls return strictly increasing values
-    and that two concurrent calls never return the same value.
-    """
-    nm = NonceManager()
-    n1 = nm.next_nonce()
-    n2 = nm.next_nonce()
-    n3 = nm.next_nonce()
-    assert n1 < n2 < n3
-    assert n2 == n1 + 1
-    assert n3 == n2 + 1

@@ -19,7 +19,6 @@ from hyperliquid.utils.constants import MAINNET_API_URL  # type: ignore[import-u
 from hyperliquid.utils.signing import get_timestamp_ms, sign_l1_action  # type: ignore[import-untyped]
 
 from market_data.universe_snapshotter import rest_post
-from oms.nonce_manager import NonceManager
 from risk.watchdog import HeartbeatMonitor
 from shared.constants import SCHEDULE_CANCEL_WINDOW_S
 
@@ -65,7 +64,6 @@ class ExchangeAdapter:
         self._wallet: LocalAccount = Account.from_key(private_key)
         self.base_url = _HL_TESTNET if testnet else MAINNET_API_URL
         self._is_mainnet = not testnet
-        self.nonce_manager = NonceManager()
         self._heartbeat_monitor = HeartbeatMonitor()
         self.coin_meta: dict[str, dict[str, Any]] = {}
         self._session: aiohttp.ClientSession | None = None

@@ -48,7 +48,7 @@ Only `shared/` exists. Everything else is greenfield:
 | `market_data/state_normaliser.py` | ✅ Complete |
 | `oms/price_formatter.py`, `order_parser.py`, `ioc_entry.py`, `execution_adapter.py` | ✅ Complete |
 | `risk/daily_loss_tracker.py`, `correlation_filter.py`, `watchdog.py`, `portfolio_controller.py` | ✅ Complete |
-| `oms/nonce_manager.py`, `execution_adapter.py` (ExchangeAdapter + stub) | ✅ Complete |
+| `oms/execution_adapter.py` (ExchangeAdapter + stub) | ✅ Complete |
 | `market_data/ws_manager.py` | ✅ Complete |
 | `main.py`, `config/settings.py`, `scripts/paper_trade.py`, `scripts/live_trade.py` | ✅ Complete |
 | `scripts/` | ❌ Not yet created |
