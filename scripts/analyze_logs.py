@@ -59,7 +59,6 @@ def main() -> None:
 
     # ── Key event extraction ──────────────────────────────────────────────────
     errors: list[dict] = []
-    restarts: list[dict] = []
     equity_loads: list[dict] = []
     scan_cycles: list[dict] = []
     regime_disabled: list[dict] = []
@@ -80,6 +79,41 @@ def main() -> None:
     config_events: list[dict] = []
     daily_resets: list[dict] = []
     data_gap_blocks: list[dict] = []
+
+    # Trade lifecycle
+    entry_fills: list[dict] = []
+    position_closes: list[dict] = []
+    protection_attaches: list[dict] = []
+    stop_placements: list[dict] = []
+    stop_failures: list[dict] = []
+    tp1_placements: list[dict] = []
+    tp2_placements: list[dict] = []
+    tp_failures: list[dict] = []
+
+    # Execution funnel
+    exec_trigger_invalid: list[dict] = []
+    exec_primary_rejected: list[dict] = []
+    exec_primary_unfilled: list[dict] = []
+    exec_fallback_sent: list[dict] = []
+    exec_fallback_rejected: list[dict] = []
+    exec_both_unfilled: list[dict] = []
+    exec_trigger_expired: list[dict] = []
+
+    # Risk / blocking events
+    daily_loss_kills: list[dict] = []
+    trading_disabled_events: list[dict] = []
+    correlation_blocks: list[dict] = []
+    max_position_blocks: list[dict] = []
+
+    # Watchlist lifecycle
+    coin_promotions: list[dict] = []
+    coin_demotions: list[dict] = []
+    gate3_warmup_starts: list[dict] = []
+    gate3_fails: list[dict] = []
+
+    # Funding exits
+    funding_exit_placings: list[dict] = []
+    funding_exit_failures: list[dict] = []
 
     for e in events:
         ev = e.get("event", "")
@@ -126,6 +160,66 @@ def main() -> None:
         if ev == "data_gap_blocking_entry":
             data_gap_blocks.append(e)
 
+        # Trade lifecycle
+        if ev == "entry_filled":
+            entry_fills.append(e)
+        if ev == "position_closed":
+            position_closes.append(e)
+        if ev == "protection_attaching":
+            protection_attaches.append(e)
+        if ev == "stop_loss_placed":
+            stop_placements.append(e)
+        if ev == "stop_loss_failed":
+            stop_failures.append(e)
+        if ev == "tp1_placed":
+            tp1_placements.append(e)
+        if ev == "tp2_placed":
+            tp2_placements.append(e)
+        if ev in ("tp1_failed", "tp2_failed"):
+            tp_failures.append(e)
+
+        # Execution funnel
+        if ev == "execute_entry_trigger_invalid":
+            exec_trigger_invalid.append(e)
+        if ev == "execute_entry_primary_rejected":
+            exec_primary_rejected.append(e)
+        if ev == "execute_entry_primary_unfilled":
+            exec_primary_unfilled.append(e)
+        if ev == "execute_entry_sending_fallback":
+            exec_fallback_sent.append(e)
+        if ev == "execute_entry_fallback_rejected":
+            exec_fallback_rejected.append(e)
+        if ev == "execute_entry_both_unfilled":
+            exec_both_unfilled.append(e)
+        if ev == "execute_entry_trigger_expired":
+            exec_trigger_expired.append(e)
+
+        # Risk / blocking
+        if ev == "daily_loss_kill":
+            daily_loss_kills.append(e)
+        if ev == "scanner_trading_disabled":
+            trading_disabled_events.append(e)
+        if ev == "correlation_block":
+            correlation_blocks.append(e)
+        if ev == "scanner_max_positions_reached":
+            max_position_blocks.append(e)
+
+        # Watchlist lifecycle
+        if ev == "coin_promoted":
+            coin_promotions.append(e)
+        if ev == "coin_demoted":
+            coin_demotions.append(e)
+        if ev == "gate3_warmup_start":
+            gate3_warmup_starts.append(e)
+        if ev == "gate3_fail":
+            gate3_fails.append(e)
+
+        # Funding exits
+        if ev == "funding_exit_placing":
+            funding_exit_placings.append(e)
+        if ev == "funding_exit_order_failed":
+            funding_exit_failures.append(e)
+
     # ── Report ────────────────────────────────────────────────────────────────
     sep = "─" * 60
 
@@ -160,7 +254,6 @@ def main() -> None:
     if equity_loads:
         latest_equity = equity_loads[-1].get("equity_usd", "?")
         print(f"  Equity (latest)      : ${latest_equity}")
-    if equity_loads:
         print(f"  Bot restarts         : {len(equity_loads)} (equity_loaded events)")
     if daily_resets:
         print(f"  Daily loss resets    : {len(daily_resets)}")
@@ -233,13 +326,21 @@ def main() -> None:
         print("  None yet (run with LOG_LEVEL=DEBUG for per-coin detail)")
     print()
 
-    # ── Watchlist ─────────────────────────────────────────────────────────────
-    print("WATCHLIST (WS tasks started)")
+    # ── Watchlist lifecycle ───────────────────────────────────────────────────
+    print("WATCHLIST LIFECYCLE")
     print(sep)
+    print(f"  Gate 3 warm-ups started : {len(gate3_warmup_starts)}")
+    print(f"  Gate 3 failures         : {len(gate3_fails)}")
+    print(f"  Coins promoted          : {len(coin_promotions)}")
+    print(f"  Coins demoted           : {len(coin_demotions)}")
     if ws_starts:
-        for e in ws_starts[-10:]:  # last 10
-            print(f"  {fmt_ts(e.get('timestamp', ''))}  {e.get('coin', '?')}")
-    else:
+        print(f"  WS tasks started (last 10):")
+        for e in ws_starts[-10:]:
+            print(f"    {fmt_ts(e.get('timestamp', ''))}  {e.get('coin', '?')}")
+    if gate3_fails:
+        fail_coins = Counter(e.get("coin", "?") for e in gate3_fails)
+        print(f"  Gate 3 fail coins: {dict(fail_coins.most_common(5))}")
+    if not (gate3_warmup_starts or coin_promotions or ws_starts):
         print("  No coins promoted to watchlist yet")
     print()
 
@@ -257,6 +358,118 @@ def main() -> None:
             print(f"  {ts}  {coin:<10} size=${size}  score={score}  regime={regime}  dry_run={dry}")
     else:
         print("  No triggers fired yet")
+    print()
+
+    # ── Execution funnel ──────────────────────────────────────────────────────
+    total_fires = len(trigger_fires)
+    if total_fires > 0 or entry_fills or exec_trigger_invalid:
+        print("EXECUTION FUNNEL")
+        print(sep)
+        print(f"  Trigger fires             : {total_fires}")
+        print(f"  Trigger invalid (stale)   : {len(exec_trigger_invalid)}")
+        print(f"  Trigger expired (fallback): {len(exec_trigger_expired)}")
+        print(f"  Primary rejected          : {len(exec_primary_rejected)}")
+        print(f"  Primary unfilled → fallback: {len(exec_fallback_sent)}")
+        print(f"  Fallback rejected         : {len(exec_fallback_rejected)}")
+        print(f"  Both unfilled             : {len(exec_both_unfilled)}")
+        print(f"  Entry fills               : {len(entry_fills)}")
+        if total_fires > 0:
+            fill_rate = len(entry_fills) / total_fires * 100
+            print(f"  Fill rate                 : {fill_rate:.1f}%")
+        if exec_primary_rejected:
+            reasons = Counter(e.get("reason", "?") for e in exec_primary_rejected)
+            print(f"  Primary reject reasons    : {dict(reasons)}")
+        print()
+
+    # ── Trades ────────────────────────────────────────────────────────────────
+    print("TRADES")
+    print(sep)
+    if entry_fills:
+        print(f"  Total entries filled : {len(entry_fills)}")
+        for e in entry_fills:
+            ts = fmt_ts(e.get("timestamp", ""))
+            coin = e.get("coin", "?")
+            px = e.get("avg_px", "?")
+            sz = e.get("size_coins", "?")
+            stop = e.get("stop_pct", "?")
+            print(f"  {ts}  {coin:<10} entry_px={px}  size={sz}  stop={stop}%")
+    else:
+        print("  No entries filled yet")
+
+    if position_closes:
+        print(f"\n  Total closes : {len(position_closes)}")
+        total_pnl = sum(e.get("pnl_usd", 0) for e in position_closes)
+        wins = [e for e in position_closes if e.get("pnl_usd", 0) > 0]
+        losses = [e for e in position_closes if e.get("pnl_usd", 0) < 0]
+        print(f"  Wins / Losses        : {len(wins)} / {len(losses)}")
+        if position_closes:
+            win_rate = len(wins) / len(position_closes) * 100
+            print(f"  Win rate             : {win_rate:.1f}%")
+        print(f"  Total PnL            : ${total_pnl:.4f}")
+        if wins:
+            avg_win = sum(e.get("pnl_usd", 0) for e in wins) / len(wins)
+            print(f"  Avg win              : ${avg_win:.4f}")
+        if losses:
+            avg_loss = sum(e.get("pnl_usd", 0) for e in losses) / len(losses)
+            print(f"  Avg loss             : ${avg_loss:.4f}")
+        # Latest daily PnL
+        latest_close = position_closes[-1]
+        print(f"  Latest daily PnL     : ${latest_close.get('daily_pnl_usd', '?')}")
+        print(f"\n  Close details:")
+        for e in position_closes:
+            ts = fmt_ts(e.get("timestamp", ""))
+            coin = e.get("coin", "?")
+            pnl = e.get("pnl_usd", 0)
+            src = e.get("pnl_source", "?")
+            daily = e.get("daily_pnl_usd", "?")
+            print(f"  {ts}  {coin:<10} pnl=${pnl:.4f}  source={src}  daily_pnl=${daily}")
+
+    if funding_exit_placings:
+        print(f"\n  Funding exits placed : {len(funding_exit_placings)}")
+        if funding_exit_failures:
+            print(f"  Funding exit failures: {len(funding_exit_failures)}")
+        for e in funding_exit_placings[-5:]:
+            ts = fmt_ts(e.get("timestamp", ""))
+            coin = e.get("coin", "?")
+            pnl_r = e.get("pnl_r", "?")
+            funding = e.get("funding_per_hr", "?")
+            print(f"  {ts}  {coin:<10} pnl_r={pnl_r}R  funding/hr={funding}")
+    print()
+
+    # ── Protection orders ─────────────────────────────────────────────────────
+    if protection_attaches or stop_placements or stop_failures or tp_failures:
+        print("PROTECTION ORDERS")
+        print(sep)
+        print(f"  Protection attach attempts : {len(protection_attaches)}")
+        print(f"  Stop losses placed         : {len(stop_placements)}")
+        print(f"  Stop loss failures         : {len(stop_failures)}")
+        print(f"  TP1 placed                 : {len(tp1_placements)}")
+        print(f"  TP2 placed                 : {len(tp2_placements)}")
+        print(f"  TP failures                : {len(tp_failures)}")
+        if stop_failures:
+            print(f"  !! STOP LOSS FAILURES — position unprotected:")
+            for e in stop_failures:
+                print(f"     {fmt_ts(e.get('timestamp',''))}  {e.get('coin','?')}  {e.get('error','')}")
+        if tp_failures:
+            for e in tp_failures:
+                print(f"     {e.get('event','?')}  {fmt_ts(e.get('timestamp',''))}  {e.get('coin','?')}  {e.get('error','')}")
+        print()
+
+    # ── Risk events ───────────────────────────────────────────────────────────
+    print("RISK")
+    print(sep)
+    print(f"  Daily loss kill switches   : {len(daily_loss_kills)}")
+    print(f"  Scanner disabled events    : {len(trading_disabled_events)}")
+    print(f"  Correlation blocks         : {len(correlation_blocks)}")
+    print(f"  Max position blocks        : {len(max_position_blocks)}")
+    if daily_loss_kills:
+        for e in daily_loss_kills:
+            print(f"  !! KILL  {fmt_ts(e.get('timestamp',''))}  loss={e.get('loss_pct','?')}")
+    if correlation_blocks:
+        block_coins = Counter(e.get("coin", "?") for e in correlation_blocks)
+        sectors = Counter(e.get("sector", "?") for e in correlation_blocks)
+        print(f"  Corr blocked coins  : {dict(block_coins.most_common(5))}")
+        print(f"  Corr blocked sectors: {dict(sectors)}")
     print()
 
     # ── Gate 2 debug ──────────────────────────────────────────────────────────
