@@ -17,11 +17,15 @@ from market_data.universe_snapshotter import bootstrap_universe_funding
 from market_data.user_ws import run_user_ws
 from market_data.ws_manager import run_ws_for_coin
 from oms.execution_adapter import ExchangeAdapter
-from oms.ioc_entry import execute_entry
+from oms.ioc_entry import execute_entry, place_ioc_aggressive
 from oms.protection_manager import attach_protection
 from risk.correlation_filter import correlation_check_passes
 from risk.daily_loss_tracker import DailyLossTracker
-from risk.portfolio_controller import calculate_position_size, calculate_stop_distance
+from risk.portfolio_controller import (
+    calculate_position_size,
+    calculate_stop_distance,
+    check_funding_exit,
+)
 from risk.watchdog import start_watchdog
 from shared.constants import (
     FUNDING_REFRESH_INTERVAL_S,
@@ -234,6 +238,51 @@ async def run_one_cycle(
             open_positions.extend(live_set)
     except Exception as exc:
         log.warning("account_state_sync_failed", error=str(exc))
+
+    # a1. Funding exit check for every open position
+    # Runs regardless of kill-switch state — position management is always active.
+    for coin in list(open_positions):
+        state = all_states[coin]
+        if state.get("position_state") != "open":
+            continue
+
+        entry_price   = state.get("entry_price")
+        size_coins    = state.get("position_size_coins")
+        stop_dist     = state.get("stop_distance_pct")
+        funding_series = state["funding_series"]
+        price_series   = state["price_series"]
+
+        if not (entry_price and size_coins and stop_dist and funding_series and price_series):
+            continue
+
+        current_price   = float(list(price_series)[-1])
+        current_funding = float(list(funding_series)[-1])
+        # pnl_r: unrealised profit in R multiples for a short
+        # R = entry_price * stop_dist (dollar risk per coin × size cancels)
+        pnl_r = (entry_price - current_price) / (entry_price * stop_dist)
+
+        if not check_funding_exit(current_funding, pnl_r):
+            continue
+
+        log.info(
+            "funding_exit_placing",
+            coin=coin,
+            funding_per_hr=round(current_funding, 6),
+            pnl_r=round(pnl_r, 3),
+            size_coins=size_coins,
+        )
+        if not settings.DRY_RUN:
+            try:
+                await place_ioc_aggressive(
+                    coin=coin,
+                    side="buy",
+                    size_coins=float(size_coins),
+                    reference_price=current_price,
+                    sz_decimals=state["sz_decimals"],
+                    exchange=exchange,
+                )
+            except Exception as exc:
+                log.error("funding_exit_order_failed", coin=coin, error=str(exc))
 
     # a. Kill switch
     if not daily_loss_tracker.is_trading_allowed():
