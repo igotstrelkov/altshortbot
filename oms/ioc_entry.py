@@ -63,8 +63,10 @@ async def execute_entry(
     size_usd: position notional in USD — output of calculate_position_size().
     Returns ParsedOrderStatus on fill, None on every abort/skip path.
     """
-    price_series = state["price_series"]
-    mid: float = list(price_series)[-1]
+    mid: float = state.get("mid_price") or 0.0
+    if mid == 0.0:
+        price_series = state["price_series"]
+        mid = float(list(price_series)[-1])
     sz_decimals: int = state["sz_decimals"]
     delta_z = get_delta_z_score(state)
 

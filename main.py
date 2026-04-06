@@ -13,6 +13,7 @@ from typing import Any
 import structlog
 
 import config.settings as settings
+from market_data.all_mids_ws import run_all_mids_ws
 from market_data.universe_snapshotter import bootstrap_universe_funding
 from market_data.user_ws import run_user_ws
 from market_data.ws_manager import run_ws_for_coin
@@ -191,6 +192,23 @@ async def regime_refresh_loop(
         await asyncio.sleep(_REGIME_REFRESH_INTERVAL_S)
 
 
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _get_mid(state: dict[str, Any]) -> float:
+    """
+    Best available mid price for a coin.
+
+    Prefers state["mid_price"] (updated by allMids WS at ~2s cadence).
+    Falls back to the most recent price_series sample if mid_price is
+    still 0.0 (pre-first-message or WS not yet connected).
+    """
+    mid = state.get("mid_price", 0.0)
+    if mid and mid > 0.0:
+        return mid
+    ps = state["price_series"]
+    return float(list(ps)[-1]) if ps else 0.0
+
+
 # ── Scanner cycle ─────────────────────────────────────────────────────────────
 
 async def run_one_cycle(
@@ -255,7 +273,7 @@ async def run_one_cycle(
         if not (entry_price and size_coins and stop_dist and funding_series and price_series):
             continue
 
-        current_price   = float(list(price_series)[-1])
+        current_price   = _get_mid(state)
         current_funding = float(list(funding_series)[-1])
         # pnl_r: unrealised profit in R multiples for a short
         # R = entry_price * stop_dist (dollar risk per coin × size cancels)
@@ -347,7 +365,7 @@ async def run_one_cycle(
         if not price_series:
             continue
 
-        current_mid = float(list(price_series)[-1])
+        current_mid = _get_mid(state)
         if current_mid == 0:
             continue
 
@@ -523,6 +541,9 @@ async def main() -> None:
             daily_loss_tracker=daily_loss_tracker,
         )
     )
+
+    # 14b. allMids WS — universe-wide mid price feed (~2s cadence)
+    asyncio.create_task(run_all_mids_ws(all_states))
 
     # 15. Scanner loop
     while True:

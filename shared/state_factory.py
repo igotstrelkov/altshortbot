@@ -43,6 +43,11 @@ def create_asset_state() -> dict[str, Any]:
         # ── Computed ──────────────────────────────────────────────────
         "squeeze_score":          0,
 
+        # ── Live mid price ────────────────────────────────────────────
+        # Updated by allMids WS (~2s cadence). 0.0 until first message.
+        # Use for order pricing; fall back to price_series[-1] if still 0.
+        "mid_price":              0.0,
+
         # ── Throttle timestamps ───────────────────────────────────────
         "last_oi_append_ts":      0.0,
         "last_premium_append_ts": 0.0,
