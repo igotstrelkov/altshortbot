@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import json
 import sys
-from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import datetime
 
 
 def parse_line(raw: str) -> dict | None:
@@ -269,6 +269,13 @@ def main() -> None:
     print("SCANNER")
     print(sep)
     print(f"  Total scan cycles    : {len(scan_cycles)}")
+    if scan_cycles:
+        filtered_counts = [e.get("filtered_by_universe", 0) for e in scan_cycles if e.get("filtered_by_universe") is not None]
+        if filtered_counts:
+            avg_filtered = sum(filtered_counts) / len(filtered_counts)
+            avg_evaluated = len(gate1_evals) / len(scan_cycles) if gate1_evals else 0
+            print(f"  Coins per cycle     : ~{avg_evaluated + avg_filtered:.0f} total  "
+                  f"({avg_filtered:.0f} filtered by liquidity, ~{avg_evaluated:.0f} reaching Gate 1)")
     if candidate_counts:
         nonzero = [c for c in candidate_counts if c > 0]
         print(f"  Cycles with candidates > 0 : {len(nonzero)} / {len(scan_cycles)}")
